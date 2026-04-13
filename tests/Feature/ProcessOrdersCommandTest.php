@@ -218,4 +218,54 @@ class ProcessOrdersCommandTest extends TestCase
             'sent_to_service_a' => 0,
         ]);
     }
+
+    public function test_auto_done_marks_long_processing_order_as_done(): void
+    {
+        config([
+            'services.service_a.base_url' => 'http://service-a.test',
+            'services.service_a.fetch_statuses' => 'queued,waiting,processing',
+            'services.service_a.auto_done_enabled' => true,
+            'services.service_a.auto_done_minutes' => 10,
+            'services.service_a.enforce_priority_sequence' => false,
+            'services.service_a.trend_min_repeat' => 99,
+            'services.service_a.trend_min_repeat_gender' => 99,
+        ]);
+
+        Http::fake([
+            'http://service-a.test/api/menus' => Http::response([
+                'data' => [],
+            ], 200),
+            'http://service-a.test/api/queue/orders*' => Http::response([
+                'data' => [
+                    [
+                        'id' => 201,
+                        'gender' => 'male',
+                        'status' => 'processing',
+                        'external_status' => 'processing',
+                        'external_note' => 'sedang diproses',
+                        'external_updated_at' => now()->subMinutes(20)->toIso8601String(),
+                        'created_at' => now()->subMinutes(30)->toIso8601String(),
+                        'items' => [
+                            ['item_name' => 'Nasi Goreng', 'qty' => 1],
+                        ],
+                    ],
+                ],
+            ], 200),
+            'http://service-a.test/api/queue/orders/201/external-update' => Http::response([
+                'status' => 'ok',
+            ], 200),
+            'http://service-a.test/api/queue/trends/update' => Http::response([
+                'status' => 'ok',
+            ], 200),
+        ]);
+
+        $this->artisan('queue:process-orders')
+            ->expectsOutputToContain('Selesai.')
+            ->assertSuccessful();
+
+        Http::assertSent(function ($request) {
+            return $request->url() === 'http://service-a.test/api/queue/orders/201/external-update'
+                && $request['external_status'] === 'done';
+        });
+    }
 }

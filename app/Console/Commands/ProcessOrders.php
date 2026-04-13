@@ -65,6 +65,7 @@ class ProcessOrders extends Command
 
             $menuTypeMap = $this->analyzer->buildMenuTypeMap($menus);
             $waitingCount = $this->countWaitingOrders($orders);
+            $preparedUpdates = [];
 
             foreach ($orders as $order) {
                 $orderId = (int) Arr::get($order, 'id');
@@ -75,6 +76,20 @@ class ProcessOrders extends Command
 
                 $analysis = $this->analyzer->analyzeOrder($order, $menuTypeMap, $waitingCount);
                 $payload = $this->buildExternalUpdatePayload($order, $analysis);
+
+                $preparedUpdates[] = [
+                    'order' => $order,
+                    'analysis' => $analysis,
+                    'payload' => $payload,
+                ];
+            }
+
+            $preparedUpdates = $this->applyPriorityQueueStrategy($preparedUpdates);
+
+            foreach ($preparedUpdates as $entry) {
+                $order = (array) Arr::get($entry, 'order', []);
+                $payload = (array) Arr::get($entry, 'payload', []);
+                $orderId = (int) Arr::get($order, 'id', 0);
 
                 if (! $this->needsUpdate($order, $payload)) {
                     // Hanya kirim PATCH jika ada perubahan agar traffic tetap efisien.
@@ -182,6 +197,60 @@ class ProcessOrders extends Command
         ]);
     }
 
+    protected function applyPriorityQueueStrategy(array $preparedUpdates): array
+    {
+        if (! (bool) config('services.service_a.enforce_priority_sequence', true)) {
+            return $preparedUpdates;
+        }
+
+        $maxProcessingSlots = max(1, (int) config('services.service_a.max_processing_slots', 1));
+        $eligible = [];
+
+        foreach ($preparedUpdates as $index => $entry) {
+            $order = (array) Arr::get($entry, 'order', []);
+            $orderStatus = strtolower((string) Arr::get($order, 'status', ''));
+            $preparedStatus = strtolower((string) Arr::get($entry, 'payload.external_status', ''));
+
+            if (in_array($orderStatus, ['done', 'cancelled'], true) || $preparedStatus === 'done') {
+                continue;
+            }
+
+            $priority = strtolower((string) Arr::get($entry, 'analysis.priority', 'low'));
+            $queueNumber = (int) Arr::get($order, 'queue.queue_number', PHP_INT_MAX);
+
+            $eligible[] = [
+                'index' => $index,
+                'priority_rank' => $this->priorityRank($priority),
+                'queue_number' => $queueNumber,
+                'order_id' => (int) Arr::get($order, 'id', PHP_INT_MAX),
+            ];
+        }
+
+        usort($eligible, function (array $a, array $b): int {
+            return [$a['priority_rank'], $a['queue_number'], $a['order_id']]
+                <=> [$b['priority_rank'], $b['queue_number'], $b['order_id']];
+        });
+
+        foreach ($eligible as $position => $row) {
+            $index = (int) $row['index'];
+            $targetStatus = $position < $maxProcessingSlots ? 'processing' : 'waiting';
+
+            $preparedUpdates[$index]['payload']['external_status'] = $targetStatus;
+            $preparedUpdates[$index]['payload']['queue_status'] = $targetStatus;
+        }
+
+        return $preparedUpdates;
+    }
+
+    protected function priorityRank(string $priority): int
+    {
+        return match ($priority) {
+            'high' => 1,
+            'medium' => 2,
+            default => 3,
+        };
+    }
+
     protected function countWaitingOrders(array $orders): int
     {
         $total = 0;
@@ -209,6 +278,20 @@ class ProcessOrders extends Command
     protected function buildExternalUpdatePayload(array $order, array $analysis): array
     {
         $orderStatus = strtolower((string) Arr::get($order, 'status', ''));
+
+        if ($this->shouldAutoCompleteOrder($order)) {
+            $payload = [
+                'external_status' => 'done',
+                'external_note' => 'Pesanan otomatis diselesaikan oleh Service B setelah melewati batas waktu proses.',
+            ];
+
+            if ((bool) config('services.service_a.send_queue_status', false)) {
+                $payload['queue_status'] = 'done';
+            }
+
+            return $payload;
+        }
+
         $externalStatus = in_array($orderStatus, ['done', 'cancelled'], true)
             ? 'done'
             : (string) Arr::get($analysis, 'external_status', 'waiting');
@@ -230,6 +313,37 @@ class ProcessOrders extends Command
         }
 
         return $payload;
+    }
+
+    protected function shouldAutoCompleteOrder(array $order): bool
+    {
+        if (! (bool) config('services.service_a.auto_done_enabled', true)) {
+            return false;
+        }
+
+        $orderStatus = strtolower((string) Arr::get($order, 'status', ''));
+        $externalStatus = strtolower((string) Arr::get($order, 'external_status', ''));
+
+        if (! in_array($orderStatus, ['waiting', 'processing'], true)) {
+            return false;
+        }
+
+        if ($externalStatus !== 'processing') {
+            return false;
+        }
+
+        $thresholdMinutes = max(1, (int) config('services.service_a.auto_done_minutes', 20));
+        $reference = Arr::get($order, 'external_updated_at') ?: Arr::get($order, 'created_at');
+
+        if (! is_string($reference) || trim($reference) === '') {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($reference)->lte(Carbon::now()->subMinutes($thresholdMinutes));
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     protected function syncOrdersToLocal(array $orders): void

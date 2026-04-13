@@ -50,6 +50,10 @@ return [
         'retry_sleep_ms' => (int) env('SERVICE_A_RETRY_SLEEP_MS', 250),
         'fetch_statuses' => env('SERVICE_A_FETCH_STATUSES', 'queued,waiting,processing'),
         'send_queue_status' => (bool) env('SERVICE_A_SEND_QUEUE_STATUS', false),
+        'enforce_priority_sequence' => (bool) env('SERVICE_A_ENFORCE_PRIORITY_SEQUENCE', true),
+        'max_processing_slots' => (int) env('SERVICE_A_MAX_PROCESSING_SLOTS', 1),
+        'auto_done_enabled' => (bool) env('SERVICE_A_AUTO_DONE_ENABLED', true),
+        'auto_done_minutes' => (int) env('SERVICE_A_AUTO_DONE_MINUTES', 20),
         'note_max_length' => (int) env('SERVICE_A_NOTE_MAX_LENGTH', 500),
 
         'busy_threshold' => (int) env('SERVICE_A_BUSY_THRESHOLD', 5),
