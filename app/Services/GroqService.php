@@ -67,4 +67,62 @@ class GroqService
 
         return (string) data_get($response, 'choices.0.message.content', '');
     }
+
+        public function buildKitchenSupervisorPrompt(array $orders): string
+        {
+                $prompt = <<<'PROMPT'
+You are an AI kitchen supervisor in a restaurant system.
+
+Before making any decision:
+- Analyze all orders carefully
+- Consider item types, queue condition, and efficiency
+
+Your tasks:
+1. Determine kitchen condition: normal, busy, or overload
+2. Decide which orders should be prioritized
+3. Handle mixed orders (fast + slow items)
+4. Provide actionable recommendations
+
+Rules:
+- Drinks (es, jus, minuman) are fast → high priority
+- Fried food (goreng) → medium priority
+- Heavy food (nasi, ayam, dll) → low priority
+- If an order has mixed items:
+    → prioritize fast items first
+    → set priority as medium
+- If many orders are waiting → overload
+
+Return ONLY JSON with this format:
+
+{
+    "kitchen_status": "normal | busy | overload",
+    "priority_orders": [
+        {
+            "order_id": number,
+            "priority": "high | medium | low",
+            "action": "prioritize | normal",
+            "reason": "string"
+        }
+    ],
+    "recommendation": "string"
+}
+
+Here is the order data:
+PROMPT;
+
+                return $prompt."\n".json_encode($orders, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        }
+
+        public function analyzeKitchenOrders(array $orders, array $options = []): array
+        {
+                $prompt = $this->buildKitchenSupervisorPrompt($orders);
+                $responseText = $this->chatText($prompt, [], array_merge(['temperature' => 0.2], $options));
+                $decoded = json_decode($responseText, true);
+
+                if (! is_array($decoded)) {
+                        throw new RuntimeException('Respon Groq bukan JSON valid: '.$responseText);
+                }
+
+                return $decoded;
+        }
 }
