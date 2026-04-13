@@ -2,11 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Models\IntelligenceOrder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class ProcessOrdersCommandTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_command_fetches_analyzes_and_updates_orders(): void
     {
         config([
@@ -59,5 +63,15 @@ class ProcessOrdersCommandTest extends TestCase
             return $request->url() === 'http://service-a.test/api/queue/trends/update'
                 && $request['image_url'] === 'https://example.com/trend.jpg';
         });
+
+        $this->assertDatabaseHas('intelligence_orders', [
+            'service_a_order_id' => 1,
+            'order_code' => null,
+            'customer_name' => null,
+        ]);
+
+        $localOrder = IntelligenceOrder::where('service_a_order_id', 1)->first();
+        $this->assertNotNull($localOrder);
+        $this->assertSame(1, $localOrder->items()->count());
     }
 }

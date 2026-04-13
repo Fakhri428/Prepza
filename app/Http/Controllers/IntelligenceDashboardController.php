@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\IntelligenceOrder;
 use App\Services\OrderAnalyzer;
 use App\Services\ServiceAApiService;
 use App\Services\TrendInsightService;
@@ -16,8 +17,13 @@ class IntelligenceDashboardController extends Controller
         TrendInsightService $trendInsightService,
     ) {
         try {
-            $menus = $apiService->fetchMenus();
-            $orders = $apiService->fetchQueueOrders();
+            $menus = $this->safeFetchMenus($apiService);
+            $orders = $this->loadOrdersFromLocalDb();
+
+            if ($orders === []) {
+                $orders = $apiService->fetchQueueOrders();
+            }
+
             $menuTypeMap = $analyzer->buildMenuTypeMap($menus);
             $waitingCount = $this->countWaitingOrders($orders);
 
@@ -93,5 +99,46 @@ class IntelligenceDashboardController extends Controller
         }
 
         return $total;
+    }
+
+    protected function safeFetchMenus(ServiceAApiService $apiService): array
+    {
+        try {
+            return $apiService->fetchMenus();
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    protected function loadOrdersFromLocalDb(): array
+    {
+        $localOrders = IntelligenceOrder::query()
+            ->with('items')
+            ->latest('last_synced_at')
+            ->limit(100)
+            ->get();
+
+        return $localOrders->map(function (IntelligenceOrder $order) {
+            return [
+                'id' => $order->service_a_order_id,
+                'order_code' => $order->order_code,
+                'customer_name' => $order->customer_name,
+                'status' => $order->status,
+                'external_status' => $order->external_status,
+                'external_note' => $order->external_note,
+                'created_at' => optional($order->service_a_created_at)?->toIso8601String(),
+                'items' => $order->items->map(fn ($item) => [
+                    'id' => $item->service_a_item_id,
+                    'item_name' => $item->item_name,
+                    'note' => $item->note,
+                    'qty' => $item->qty,
+                    'subtotal' => $item->subtotal,
+                ])->toArray(),
+                'queue' => [
+                    'queue_number' => $order->queue_number,
+                    'status' => $order->queue_status,
+                ],
+            ];
+        })->all();
     }
 }
