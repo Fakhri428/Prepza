@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\IntelligenceOrder;
 use App\Services\OrderAnalyzer;
-use App\Services\ServiceAApiService;
 use App\Services\TrendInsightService;
 use Illuminate\Support\Arr;
 use Throwable;
@@ -12,17 +11,12 @@ use Throwable;
 class IntelligenceDashboardController extends Controller
 {
     public function __invoke(
-        ServiceAApiService $apiService,
         OrderAnalyzer $analyzer,
         TrendInsightService $trendInsightService,
     ) {
         try {
-            $menus = $this->safeFetchMenus($apiService);
+            $menus = [];
             $orders = $this->loadOrdersFromLocalDb();
-
-            if ($orders === []) {
-                $orders = $apiService->fetchQueueOrders();
-            }
 
             $menuTypeMap = $analyzer->buildMenuTypeMap($menus);
             $waitingCount = $this->countWaitingOrders($orders);
@@ -50,8 +44,13 @@ class IntelligenceDashboardController extends Controller
 
             $trendPayload = $trendInsightService->buildTrendPayload($orders);
 
+            $errorMessage = null;
+            if ($orders === []) {
+                $errorMessage = 'Belum ada data lokal. Jalankan command queue:process-orders untuk sinkronisasi dari Service A.';
+            }
+
             return view('intelligence.dashboard', [
-                'errorMessage' => null,
+                'errorMessage' => $errorMessage,
                 'summary' => [
                     'total_orders' => count($orders),
                     'waiting_count' => $waitingCount,
@@ -99,15 +98,6 @@ class IntelligenceDashboardController extends Controller
         }
 
         return $total;
-    }
-
-    protected function safeFetchMenus(ServiceAApiService $apiService): array
-    {
-        try {
-            return $apiService->fetchMenus();
-        } catch (Throwable) {
-            return [];
-        }
     }
 
     protected function loadOrdersFromLocalDb(): array
