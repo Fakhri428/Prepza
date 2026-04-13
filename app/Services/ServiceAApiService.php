@@ -2,10 +2,10 @@
 
 namespace App\Services;
 
+use App\Exceptions\ServiceARequestException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
-use RuntimeException;
 
 class ServiceAApiService
 {
@@ -70,6 +70,10 @@ class ServiceAApiService
             return;
         }
 
-        throw new RuntimeException("Service A request gagal ({$statusCode}): {$body}");
+        throw new ServiceARequestException(
+            message: "Service A request gagal ({$statusCode}): {$body}",
+            statusCode: $statusCode,
+            responseBody: $body,
+        );
     }
 }

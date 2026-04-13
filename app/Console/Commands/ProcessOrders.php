@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Exceptions\ServiceARequestException;
 use App\Models\IntelligenceOrder;
 use App\Services\OrderAnalyzer;
 use App\Services\ServiceAApiService;
@@ -48,10 +49,7 @@ class ProcessOrders extends Command
                 }
 
                 $analysis = $this->analyzer->analyzeOrder($order, $menuTypeMap, $waitingCount);
-                $payload = [
-                    'external_status' => $analysis['external_status'],
-                    'external_note' => $analysis['external_note'],
-                ];
+                $payload = $this->buildExternalUpdatePayload($order, $analysis);
 
                 if (! $this->needsUpdate($order, $payload)) {
                     // Hanya kirim PATCH jika ada perubahan agar traffic tetap efisien.
@@ -68,6 +66,21 @@ class ProcessOrders extends Command
                 try {
                     $this->apiService->patchExternalUpdate($orderId, $payload);
                     $updatedCount++;
+                } catch (ServiceARequestException $exception) {
+                    if ($exception->statusCode() === 404) {
+                        $skippedCount++;
+                        $this->warn("Order {$orderId} tidak ditemukan di Service A (404), skip.");
+                        continue;
+                    }
+
+                    if ($exception->statusCode() === 422) {
+                        $failedCount++;
+                        $this->warn("Payload order {$orderId} tidak valid (422): {$exception->responseBody()}");
+                        continue;
+                    }
+
+                    $failedCount++;
+                    $this->warn("Update order {$orderId} gagal ({$exception->statusCode()}): {$exception->getMessage()}");
                 } catch (Throwable $throwable) {
                     $failedCount++;
                     $this->warn("Update order {$orderId} gagal: {$throwable->getMessage()}");
@@ -81,6 +94,14 @@ class ProcessOrders extends Command
                 } else {
                     try {
                         $this->apiService->postTrendUpdate($trendPayload);
+                    } catch (ServiceARequestException $exception) {
+                        if ($exception->statusCode() === 422) {
+                            $this->warn('Trend payload tidak valid (422): '.$exception->responseBody());
+                        } elseif ($exception->statusCode() >= 500) {
+                            $this->warn('Service A error saat kirim trend: '.$exception->getMessage());
+                        } else {
+                            $this->warn('Kirim trend gagal ('.$exception->statusCode().'): '.$exception->getMessage());
+                        }
                     } catch (Throwable $throwable) {
                         $this->warn('Kirim trend gagal: '.$throwable->getMessage());
                     }
@@ -119,6 +140,32 @@ class ProcessOrders extends Command
         $newNote = trim((string) Arr::get($payload, 'external_note', ''));
 
         return $currentStatus !== $newStatus || $currentNote !== $newNote;
+    }
+
+    protected function buildExternalUpdatePayload(array $order, array $analysis): array
+    {
+        $orderStatus = strtolower((string) Arr::get($order, 'status', ''));
+        $externalStatus = in_array($orderStatus, ['done', 'cancelled'], true)
+            ? 'done'
+            : (string) Arr::get($analysis, 'external_status', 'waiting');
+
+        $externalNote = in_array($orderStatus, ['done', 'cancelled'], true)
+            ? 'Pesanan ditandai selesai pada sinkronisasi Service B.'
+            : (string) Arr::get($analysis, 'external_note', '');
+
+        $noteMaxLength = max(1, (int) config('services.service_a.note_max_length', 500));
+        $externalNote = trim(mb_substr($externalNote, 0, $noteMaxLength));
+
+        $payload = [
+            'external_status' => $externalStatus,
+            'external_note' => $externalNote,
+        ];
+
+        if ((bool) config('services.service_a.send_queue_status', false)) {
+            $payload['queue_status'] = $orderStatus === 'cancelled' ? 'cancelled' : $externalStatus;
+        }
+
+        return $payload;
     }
 
     protected function syncOrdersToLocal(array $orders): void

@@ -49,6 +49,8 @@ return [
         'retry_times' => (int) env('SERVICE_A_RETRY_TIMES', 2),
         'retry_sleep_ms' => (int) env('SERVICE_A_RETRY_SLEEP_MS', 250),
         'fetch_statuses' => env('SERVICE_A_FETCH_STATUSES', 'queued,waiting,processing'),
+        'send_queue_status' => (bool) env('SERVICE_A_SEND_QUEUE_STATUS', false),
+        'note_max_length' => (int) env('SERVICE_A_NOTE_MAX_LENGTH', 500),
 
         'busy_threshold' => (int) env('SERVICE_A_BUSY_THRESHOLD', 5),
         'overload_threshold' => (int) env('SERVICE_A_OVERLOAD_THRESHOLD', 10),
