@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Exceptions\ServiceARequestException;
 use App\Models\IntelligenceOrder;
+use App\Models\IntelligenceTrend;
 use App\Services\OrderAnalyzer;
 use App\Services\ServiceAApiService;
 use App\Services\TrendInsightService;
@@ -35,9 +36,33 @@ class ProcessOrders extends Command
 
         try {
             // Ambil snapshot data dari Service A, lalu analisis seluruh order dalam satu batch.
-            $menus = $this->apiService->fetchMenus();
-            $orders = $this->apiService->fetchQueueOrders();
-            $this->syncOrdersToLocal($orders);
+            $useFallbackData = false;
+
+            try {
+                $menus = $this->apiService->fetchMenus();
+                $orders = $this->apiService->fetchQueueOrders();
+            } catch (Throwable $throwable) {
+                if (! $dryRun) {
+                    throw $throwable;
+                }
+
+                $this->warn('Service A tidak bisa diakses pada mode dry-run: '.$throwable->getMessage());
+                $orders = $this->loadOrdersFromLocalSnapshot();
+                $menus = [];
+                $useFallbackData = true;
+
+                if ($orders !== []) {
+                    $this->line('[DRY-RUN] Menggunakan snapshot order lokal dari database.');
+                } else {
+                    $orders = $this->buildDemoOrders();
+                    $this->line('[DRY-RUN] Snapshot lokal kosong, gunakan data demo internal.');
+                }
+            }
+
+            if (! $useFallbackData) {
+                $this->syncOrdersToLocal($orders);
+            }
+
             $menuTypeMap = $this->analyzer->buildMenuTypeMap($menus);
             $waitingCount = $this->countWaitingOrders($orders);
 
@@ -58,7 +83,13 @@ class ProcessOrders extends Command
                 }
 
                 if ($dryRun) {
-                    $this->line("[DRY-RUN] Order {$orderId} -> ".json_encode($payload, JSON_UNESCAPED_UNICODE));
+                    $this->line(sprintf(
+                        '[DRY-RUN] Order %d | %s -> %s | note: %s',
+                        $orderId,
+                        (string) Arr::get($order, 'external_status', '-'),
+                        (string) Arr::get($payload, 'external_status', '-'),
+                        $this->shortenText((string) Arr::get($payload, 'external_note', '-'), 90)
+                    ));
                     $updatedCount++;
                     continue;
                 }
@@ -87,13 +118,21 @@ class ProcessOrders extends Command
                 }
             }
 
-            $trendPayload = $this->trendInsightService->buildTrendPayload($orders);
-            if ($trendPayload !== null) {
+            $trendPayloads = $this->trendInsightService->buildTrendPayloadsByGender($orders);
+            foreach ($trendPayloads as $trendPayload) {
+                $sentToServiceA = false;
+
                 if ($dryRun) {
-                    $this->line('[DRY-RUN] Trend payload: '.json_encode($trendPayload, JSON_UNESCAPED_UNICODE));
+                    $this->line(sprintf(
+                        '[DRY-RUN] Trend | %s | score: %s | exp: %s',
+                        (string) Arr::get($trendPayload, 'title', '-'),
+                        (string) Arr::get($trendPayload, 'score', '-'),
+                        (string) Arr::get($trendPayload, 'expires_at', '-')
+                    ));
                 } else {
                     try {
                         $this->apiService->postTrendUpdate($trendPayload);
+                        $sentToServiceA = true;
                     } catch (ServiceARequestException $exception) {
                         if ($exception->statusCode() === 422) {
                             $this->warn('Trend payload tidak valid (422): '.$exception->responseBody());
@@ -106,6 +145,14 @@ class ProcessOrders extends Command
                         $this->warn('Kirim trend gagal: '.$throwable->getMessage());
                     }
                 }
+
+                try {
+                    $this->storeTrendLocally($trendPayload, $sentToServiceA);
+                } catch (Throwable $throwable) {
+                    if (! $dryRun) {
+                        $this->warn('Simpan trend lokal gagal: '.$throwable->getMessage());
+                    }
+                }
             }
 
             $this->info("Selesai. Updated: {$updatedCount}, Skipped: {$skippedCount}, Failed: {$failedCount}");
@@ -116,6 +163,23 @@ class ProcessOrders extends Command
 
             return self::FAILURE;
         }
+    }
+
+    protected function storeTrendLocally(array $trendPayload, bool $sentToServiceA): void
+    {
+        IntelligenceTrend::query()->create([
+            'process_run_id' => null,
+            'title' => (string) Arr::get($trendPayload, 'title', ''),
+            'image_url' => (string) Arr::get($trendPayload, 'image_url', ''),
+            'caption' => Arr::get($trendPayload, 'caption'),
+            'score' => Arr::has($trendPayload, 'score') ? (int) Arr::get($trendPayload, 'score') : null,
+            'source_timestamp' => Arr::get($trendPayload, 'source_timestamp'),
+            'expires_at' => Arr::get($trendPayload, 'expires_at'),
+            'is_active' => (bool) Arr::get($trendPayload, 'is_active', true),
+            'sent_to_service_a' => $sentToServiceA,
+            'payload' => $trendPayload,
+            'detected_at' => Carbon::now(),
+        ]);
     }
 
     protected function countWaitingOrders(array $orders): int
@@ -183,6 +247,7 @@ class ProcessOrders extends Command
                 [
                     'order_code' => Arr::get($order, 'order_code'),
                     'customer_name' => Arr::get($order, 'customer_name'),
+                    'gender' => Arr::get($order, 'gender'),
                     'status' => Arr::get($order, 'status'),
                     'external_status' => Arr::get($order, 'external_status'),
                     'external_note' => Arr::get($order, 'external_note'),
@@ -208,5 +273,85 @@ class ProcessOrders extends Command
                 ]);
             }
         }
+    }
+
+    protected function loadOrdersFromLocalSnapshot(int $limit = 25): array
+    {
+        return IntelligenceOrder::query()
+            ->with('items')
+            ->orderByDesc('last_synced_at')
+            ->limit($limit)
+            ->get()
+            ->map(function (IntelligenceOrder $order): array {
+                return [
+                    'id' => (int) $order->service_a_order_id,
+                    'order_code' => $order->order_code,
+                    'customer_name' => $order->customer_name,
+                    'gender' => $order->gender,
+                    'status' => $order->status,
+                    'external_status' => $order->external_status,
+                    'external_note' => $order->external_note,
+                    'created_at' => optional($order->service_a_created_at)?->toIso8601String(),
+                    'items' => $order->items->map(function ($item): array {
+                        return [
+                            'id' => $item->service_a_item_id,
+                            'item_name' => $item->item_name,
+                            'note' => $item->note,
+                            'qty' => (int) $item->qty,
+                            'subtotal' => $item->subtotal,
+                        ];
+                    })->all(),
+                    'queue' => [
+                        'queue_number' => $order->queue_number,
+                        'status' => $order->queue_status,
+                    ],
+                ];
+            })
+            ->all();
+    }
+
+    protected function buildDemoOrders(): array
+    {
+        return [
+            [
+                'id' => 9001,
+                'order_code' => 'DEMO-9001',
+                'customer_name' => 'Demo Andi',
+                'gender' => 'male',
+                'status' => 'waiting',
+                'external_status' => 'waiting',
+                'external_note' => 'menunggu diproses',
+                'items' => [
+                    ['id' => 1, 'item_name' => 'Ayam Geprek', 'note' => null, 'qty' => 2, 'subtotal' => null],
+                    ['id' => 2, 'item_name' => 'Es Teh', 'note' => null, 'qty' => 1, 'subtotal' => null],
+                ],
+                'queue' => ['queue_number' => 1, 'status' => 'waiting'],
+            ],
+            [
+                'id' => 9002,
+                'order_code' => 'DEMO-9002',
+                'customer_name' => 'Demo Sinta',
+                'gender' => 'female',
+                'status' => 'waiting',
+                'external_status' => 'waiting',
+                'external_note' => 'menunggu diproses',
+                'items' => [
+                    ['id' => 3, 'item_name' => 'Salad Buah', 'note' => null, 'qty' => 2, 'subtotal' => null],
+                    ['id' => 4, 'item_name' => 'Es Teh', 'note' => null, 'qty' => 1, 'subtotal' => null],
+                ],
+                'queue' => ['queue_number' => 2, 'status' => 'waiting'],
+            ],
+        ];
+    }
+
+    protected function shortenText(string $text, int $maxLength = 90): string
+    {
+        $clean = trim(preg_replace('/\s+/', ' ', $text) ?? '');
+
+        if (mb_strlen($clean) <= $maxLength) {
+            return $clean;
+        }
+
+        return rtrim(mb_substr($clean, 0, $maxLength - 1)).'…';
     }
 }

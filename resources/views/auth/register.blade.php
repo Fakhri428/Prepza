@@ -53,7 +53,7 @@
     <div class="left-glow"></div>
     <div class="left-content">
         <div class="brand">
-            <div class="brand-icon">SB</div>
+            <div class="brand-icon">P</div>
             <div>
                 <div class="brand-name">Prepza</div>
                 <div class="brand-sub">AI Decision Engine</div>

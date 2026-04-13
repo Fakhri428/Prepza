@@ -66,7 +66,7 @@
 <body>
 <nav>
     <div class="nav-logo">
-        <div class="nav-logo-icon">SB</div>
+        <div class="nav-logo-icon">P</div>
         <div>
             <div class="nav-logo-name">Prepza</div>
             <div class="nav-logo-sub">AI Decision Engine</div>

@@ -285,6 +285,10 @@ Catatan perilaku:
 ## POST /api/queue/trends/update
 Layer 2 mengirim data tren makanan terbaru untuk ditampilkan di queue board.
 
+Catatan integrasi terbaru:
+- Service B mengirim trend insight terpisah berdasarkan gender (`male`/`female`).
+- Segmentasi gender disisipkan di `title` dan `caption` (contoh: `(...laki-laki)` atau `(...perempuan)`) tanpa mengubah kontrak field endpoint.
+
 ### Body JSON
 - title: required, string max 120
 - image_url: required, url max 2048

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\IntelligenceOrder;
+use App\Models\IntelligenceTrend;
 use App\Services\OrderAnalyzer;
 use App\Services\TrendInsightService;
 use Illuminate\Support\Arr;
@@ -42,7 +43,10 @@ class IntelligenceDashboardController extends Controller
                 ];
             }
 
-            $trendPayload = $trendInsightService->buildTrendPayload($orders);
+            $trendPayloads = $this->loadLatestStoredTrendsByGender();
+            if ($trendPayloads === []) {
+                $trendPayloads = $trendInsightService->buildTrendPayloadsByGender($orders);
+            }
 
             $errorMessage = null;
             if ($orders === []) {
@@ -58,7 +62,7 @@ class IntelligenceDashboardController extends Controller
                     'priority_counts' => $priorityCounts,
                 ],
                 'orders' => $analyzedOrders,
-                'trend' => $trendPayload,
+                'trends' => $trendPayloads,
             ]);
         } catch (Throwable $throwable) {
             return view('intelligence.dashboard', [
@@ -70,7 +74,7 @@ class IntelligenceDashboardController extends Controller
                     'priority_counts' => ['high' => 0, 'medium' => 0, 'low' => 0],
                 ],
                 'orders' => [],
-                'trend' => null,
+                'trends' => [],
             ]);
         }
     }
@@ -113,6 +117,7 @@ class IntelligenceDashboardController extends Controller
                 'id' => $order->service_a_order_id,
                 'order_code' => $order->order_code,
                 'customer_name' => $order->customer_name,
+                'gender' => $order->gender,
                 'status' => $order->status,
                 'external_status' => $order->external_status,
                 'external_note' => $order->external_note,
@@ -130,5 +135,52 @@ class IntelligenceDashboardController extends Controller
                 ],
             ];
         })->all();
+    }
+
+    protected function loadLatestStoredTrendsByGender(): array
+    {
+        $trends = IntelligenceTrend::query()
+            ->where('is_active', true)
+            ->where(function ($query) {
+                $query->whereNull('expires_at')
+                    ->orWhere('expires_at', '>', now());
+            })
+            ->latest('detected_at')
+            ->limit(20)
+            ->get();
+
+        if ($trends->isEmpty()) {
+            return [];
+        }
+
+        $grouped = [];
+
+        foreach ($trends as $trend) {
+            $title = strtolower((string) $trend->title);
+
+            if (str_contains($title, 'laki-laki')) {
+                $segment = 'male';
+            } elseif (str_contains($title, 'perempuan')) {
+                $segment = 'female';
+            } else {
+                continue;
+            }
+
+            if (isset($grouped[$segment])) {
+                continue;
+            }
+
+            $grouped[$segment] = [
+                'title' => $trend->title,
+                'image_url' => $trend->image_url,
+                'caption' => $trend->caption,
+                'score' => $trend->score,
+                'source_timestamp' => optional($trend->source_timestamp)?->toIso8601String(),
+                'expires_at' => optional($trend->expires_at)?->toIso8601String(),
+                'is_active' => $trend->is_active,
+            ];
+        }
+
+        return array_values($grouped);
     }
 }

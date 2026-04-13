@@ -168,20 +168,24 @@
                         <div><div class="card-title">Trend Insight</div><div class="card-sub">Tren dari AI engine</div></div>
                     </div>
                     <div style="padding:16px">
-                        @if($trend)
-                            @if(!empty($trend['image_url']))
-                            <img src="{{ $trend['image_url'] }}" alt="Trend" style="width:100%;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-bottom:10px">
-                            @endif
-                            <div style="font-size:13px;font-weight:700;margin-bottom:5px">{{ $trend['title'] }}</div>
-                            <p style="font-size:12px;color:var(--text-muted);line-height:1.6;margin-bottom:10px">{{ $trend['caption'] }}</p>
-                            <div style="display:flex;flex-direction:column;gap:4px">
-                                @foreach(['Score'=>$trend['score'],'Source'=>$trend['source_timestamp'],'Expires'=>$trend['expires_at']] as $k=>$v)
-                                <div style="display:flex;justify-content:space-between;font-size:11.5px">
-                                    <span style="color:var(--text-dim)">{{$k}}</span>
-                                    <span style="font-weight:600;color:var(--accent)">{{$v}}</span>
+                        @if(!empty($trends))
+                            @foreach($trends as $index => $trend)
+                                <div style="border:1px solid var(--border);border-radius:10px;padding:10px;{{ $index > 0 ? 'margin-top:10px' : '' }}">
+                                    @if(!empty($trend['image_url']))
+                                    <img src="{{ $trend['image_url'] }}" alt="Trend" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-bottom:8px">
+                                    @endif
+                                    <div style="font-size:13px;font-weight:700;margin-bottom:4px">{{ $trend['title'] }}</div>
+                                    <p style="font-size:12px;color:var(--text-muted);line-height:1.6;margin-bottom:8px">{{ $trend['caption'] }}</p>
+                                    <div style="display:flex;flex-direction:column;gap:3px">
+                                        @foreach(['Score'=>$trend['score'],'Source'=>$trend['source_timestamp'],'Expires'=>$trend['expires_at']] as $k=>$v)
+                                        <div style="display:flex;justify-content:space-between;font-size:11.5px">
+                                            <span style="color:var(--text-dim)">{{$k}}</span>
+                                            <span style="font-weight:600;color:var(--accent)">{{$v}}</span>
+                                        </div>
+                                        @endforeach
+                                    </div>
                                 </div>
-                                @endforeach
-                            </div>
+                            @endforeach
                         @else
                             <div style="text-align:center;padding:28px 10px;color:var(--text-dim)">
                                 <div style="font-size:26px;margin-bottom:8px">📈</div>

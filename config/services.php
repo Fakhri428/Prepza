@@ -56,6 +56,7 @@ return [
         'overload_threshold' => (int) env('SERVICE_A_OVERLOAD_THRESHOLD', 10),
 
         'trend_min_repeat' => (int) env('SERVICE_A_TREND_MIN_REPEAT', 4),
+        'trend_min_repeat_gender' => (int) env('SERVICE_A_TREND_MIN_REPEAT_GENDER', 2),
         'trend_expire_minutes' => (int) env('SERVICE_A_TREND_EXPIRE_MINUTES', 180),
         'trend_placeholder_image' => env('SERVICE_A_TREND_PLACEHOLDER_IMAGE', 'https://placehold.co/1200x630/png'),
     ],

@@ -14,6 +14,7 @@ class IntelligenceOrder extends Model
         'service_a_order_id',
         'order_code',
         'customer_name',
+        'gender',
         'status',
         'external_status',
         'external_note',
