@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\IntelligenceDashboardController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -14,4 +15,6 @@ Route::middleware([
     Route::get('/dashboard', function () {
         return view('dashboard');
     })->name('dashboard');
+
+    Route::get('/intelligence', IntelligenceDashboardController::class)->name('intelligence.dashboard');
 });

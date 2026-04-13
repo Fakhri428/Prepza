@@ -42,4 +42,20 @@ return [
         'timeout' => (int) env('GROQ_TIMEOUT', 30),
     ],
 
+    'service_a' => [
+        'base_url' => env('SERVICE_A_BASE_URL', 'http://localhost:8000'),
+        'token' => env('SERVICE_A_TOKEN'),
+        'timeout' => (int) env('SERVICE_A_TIMEOUT', 20),
+        'retry_times' => (int) env('SERVICE_A_RETRY_TIMES', 2),
+        'retry_sleep_ms' => (int) env('SERVICE_A_RETRY_SLEEP_MS', 250),
+        'fetch_statuses' => env('SERVICE_A_FETCH_STATUSES', 'queued,waiting,processing'),
+
+        'busy_threshold' => (int) env('SERVICE_A_BUSY_THRESHOLD', 5),
+        'overload_threshold' => (int) env('SERVICE_A_OVERLOAD_THRESHOLD', 10),
+
+        'trend_min_repeat' => (int) env('SERVICE_A_TREND_MIN_REPEAT', 4),
+        'trend_expire_minutes' => (int) env('SERVICE_A_TREND_EXPIRE_MINUTES', 180),
+        'trend_placeholder_image' => env('SERVICE_A_TREND_PLACEHOLDER_IMAGE', 'https://placehold.co/1200x630/png'),
+    ],
+
 ];
