@@ -59,6 +59,20 @@
         }
         .btn-status:hover { background: var(--bg-hover); }
         .btn-status-done { border-color: rgba(16,185,129,0.4); color: #10b981; }
+        .trend-carousel-slide { display: none; }
+        .trend-carousel-slide.active { display: block; }
+        .trend-carousel-btn {
+            border: 1px solid var(--border);
+            background: var(--bg-base);
+            color: var(--text-main);
+            border-radius: 8px;
+            width: 28px;
+            height: 28px;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+        }
+        .trend-carousel-btn:hover { background: var(--bg-hover); }
         /* AI ENGINE CARD */
         .engine-card {
             background:linear-gradient(135deg,var(--accent),#4f46e5);
@@ -212,19 +226,35 @@
                         <div><div class="card-title">Trend Insight</div><div class="card-sub">Tren dari AI engine</div></div>
                     </div>
                     <div style="padding:16px">
-                        @if(!empty($trends))
-                            @foreach($trends as $index => $trend)
-                                <div style="border:1px solid var(--border);border-radius:10px;padding:10px;{{ $index > 0 ? 'margin-top:10px' : '' }}">
-                                    @if(!empty($trend['image_url']))
-                                    <img src="{{ $trend['image_url'] }}" alt="Trend" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-bottom:8px">
-                                    @endif
-                                    <div style="font-size:13px;font-weight:700;margin-bottom:4px">{{ $trend['title'] }}</div>
-                                    <p style="font-size:12px;color:var(--text-muted);line-height:1.6;margin-bottom:8px">{{ $trend['caption'] }}</p>
-                                    <div style="display:flex;flex-direction:column;gap:3px">
-                                        @foreach(['Score'=>$trend['score'],'Source'=>$trend['source_timestamp'],'Expires'=>$trend['expires_at']] as $k=>$v)
-                                        <div style="display:flex;justify-content:space-between;font-size:11.5px">
-                                            <span style="color:var(--text-dim)">{{$k}}</span>
-                                            <span style="font-weight:600;color:var(--accent)">{{$v}}</span>
+                        @if(!empty($trendGroups))
+                            @foreach($trendGroups as $groupIndex => $group)
+                                <div style="border:1px solid var(--border);border-radius:10px;padding:10px;{{ $groupIndex > 0 ? 'margin-top:10px' : '' }}">
+                                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                                        <div style="font-size:12px;font-weight:700;color:var(--text-main)">Carousel {{ $group['label'] }}</div>
+                                        @if(count($group['slides']) > 1)
+                                        <div style="display:flex;gap:6px">
+                                            <button type="button" class="trend-carousel-btn" data-carousel-prev="trend-carousel-{{ $groupIndex }}">‹</button>
+                                            <button type="button" class="trend-carousel-btn" data-carousel-next="trend-carousel-{{ $groupIndex }}">›</button>
+                                        </div>
+                                        @endif
+                                    </div>
+
+                                    <div data-carousel="trend-carousel-{{ $groupIndex }}">
+                                        @foreach($group['slides'] as $slideIndex => $trend)
+                                        <div class="trend-carousel-slide {{ $slideIndex === 0 ? 'active' : '' }}" data-carousel-slide>
+                                            @if(!empty($trend['image_url']))
+                                            <img src="{{ $trend['image_url'] }}" alt="Trend" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-bottom:8px">
+                                            @endif
+                                            <div style="font-size:13px;font-weight:700;margin-bottom:4px">{{ $trend['title'] }}</div>
+                                            <p style="font-size:12px;color:var(--text-muted);line-height:1.6;margin-bottom:8px">{{ $trend['caption'] }}</p>
+                                            <div style="display:flex;flex-direction:column;gap:3px">
+                                                @foreach(['Score'=>$trend['score'],'Source'=>$trend['source_timestamp'],'Expires'=>$trend['expires_at']] as $k=>$v)
+                                                <div style="display:flex;justify-content:space-between;font-size:11.5px">
+                                                    <span style="color:var(--text-dim)">{{$k}}</span>
+                                                    <span style="font-weight:600;color:var(--accent)">{{$v}}</span>
+                                                </div>
+                                                @endforeach
+                                            </div>
                                         </div>
                                         @endforeach
                                     </div>
@@ -255,4 +285,35 @@
 
         </div>
     </div>
+
+    <script>
+        (function () {
+            function moveCarousel(carouselName, direction) {
+                const root = document.querySelector('[data-carousel="' + carouselName + '"]');
+                if (!root) return;
+
+                const slides = Array.from(root.querySelectorAll('[data-carousel-slide]'));
+                if (slides.length <= 1) return;
+
+                const currentIndex = slides.findIndex((slide) => slide.classList.contains('active'));
+                const safeCurrent = currentIndex >= 0 ? currentIndex : 0;
+                const nextIndex = (safeCurrent + direction + slides.length) % slides.length;
+
+                slides[safeCurrent].classList.remove('active');
+                slides[nextIndex].classList.add('active');
+            }
+
+            document.querySelectorAll('[data-carousel-prev]').forEach((button) => {
+                button.addEventListener('click', function () {
+                    moveCarousel(this.getAttribute('data-carousel-prev'), -1);
+                });
+            });
+
+            document.querySelectorAll('[data-carousel-next]').forEach((button) => {
+                button.addEventListener('click', function () {
+                    moveCarousel(this.getAttribute('data-carousel-next'), 1);
+                });
+            });
+        })();
+    </script>
 </x-app-layout>

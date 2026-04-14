@@ -61,42 +61,70 @@ class TrendInsightService
             }
 
             arsort($totals);
-            $topItem = (string) array_key_first($totals);
-            $topCount = (int) $totals[$topItem];
+            $pickedMenuKeys = [];
 
-            if ($topCount < $minimumRepeatGender) {
-                continue;
+            foreach ($totals as $topItem => $topCount) {
+                $topItem = (string) $topItem;
+                $topCount = (int) $topCount;
+
+                if ($topCount < $minimumRepeatGender) {
+                    continue;
+                }
+
+                $displayName = mb_convert_case($topItem, MB_CASE_TITLE, 'UTF-8');
+                $score = min(100, 50 + ($topCount * 5));
+                $menuData = $this->resolveTrendMenuData($topItem, $displayName, $menuLookup);
+                $menuKey = $this->menuIdentityKey($menuData);
+
+                if (in_array($menuKey, $pickedMenuKeys, true)) {
+                    continue;
+                }
+
+                $pickedMenuKeys[] = $menuKey;
+
+                $payloads[] = [
+                    'title' => $displayName.' Sedang Naik ('.$genderLabel.')',
+                    'image_url' => $this->resolvePrimaryImageUrl($menuData),
+                    'caption' => "Terdeteksi {$topCount} porsi aktif untuk {$displayName} dari pelanggan {$genderLabel} pada antrean saat ini.",
+                    'score' => $score,
+                    'source_timestamp' => $now->toIso8601String(),
+                    'expires_at' => $expiresAt->toIso8601String(),
+                    'is_active' => true,
+                    'menu' => $menuData,
+                ];
+
+                if (count($pickedMenuKeys) >= 2) {
+                    break;
+                }
             }
-
-            $displayName = mb_convert_case($topItem, MB_CASE_TITLE, 'UTF-8');
-            $score = min(100, 50 + ($topCount * 5));
-            $menuData = $this->resolveTrendMenuData($topItem, $displayName, $menuLookup);
-
-            $payloads[] = [
-                'title' => $displayName.' Sedang Naik ('.$genderLabel.')',
-                'image_url' => (string) config('services.service_a.trend_placeholder_image'),
-                'caption' => "Terdeteksi {$topCount} porsi aktif untuk {$displayName} dari pelanggan {$genderLabel} pada antrean saat ini.",
-                'score' => $score,
-                'source_timestamp' => $now->toIso8601String(),
-                'expires_at' => $expiresAt->toIso8601String(),
-                'is_active' => true,
-                'menu' => $menuData,
-            ];
         }
 
         if ($payloads === [] && ! $hasGenderData && $totalsOverall !== []) {
             arsort($totalsOverall);
-            $topItem = (string) array_key_first($totalsOverall);
-            $topCount = (int) $totalsOverall[$topItem];
+            $pickedMenuKeys = [];
 
-            if ($topCount >= $minimumRepeat) {
+            foreach ($totalsOverall as $topItem => $topCount) {
+                $topItem = (string) $topItem;
+                $topCount = (int) $topCount;
+
+                if ($topCount < $minimumRepeat) {
+                    continue;
+                }
+
                 $displayName = mb_convert_case($topItem, MB_CASE_TITLE, 'UTF-8');
                 $score = min(100, 50 + ($topCount * 5));
                 $menuData = $this->resolveTrendMenuData($topItem, $displayName, $menuLookup);
+                $menuKey = $this->menuIdentityKey($menuData);
+
+                if (in_array($menuKey, $pickedMenuKeys, true)) {
+                    continue;
+                }
+
+                $pickedMenuKeys[] = $menuKey;
 
                 $payloads[] = [
                     'title' => $displayName.' Sedang Naik',
-                    'image_url' => (string) config('services.service_a.trend_placeholder_image'),
+                    'image_url' => $this->resolvePrimaryImageUrl($menuData),
                     'caption' => "Terdeteksi {$topCount} porsi aktif untuk {$displayName} pada antrean saat ini.",
                     'score' => $score,
                     'source_timestamp' => $now->toIso8601String(),
@@ -104,6 +132,10 @@ class TrendInsightService
                     'is_active' => true,
                     'menu' => $menuData,
                 ];
+
+                if (count($pickedMenuKeys) >= 2) {
+                    break;
+                }
             }
         }
 
@@ -190,5 +222,77 @@ class TrendInsightService
             'price' => Arr::get($matched, 'price'),
             'is_active' => (bool) Arr::get($matched, 'is_active', true),
         ];
+    }
+
+    protected function resolvePrimaryImageUrl(array $menuData): string
+    {
+        $fallback = (string) config('services.service_a.trend_placeholder_image');
+
+        $candidates = [
+            Arr::get($menuData, 'image_external_url'),
+            Arr::get($menuData, 'image_url'),
+            $this->buildImageUrlFromPath(Arr::get($menuData, 'image_path')),
+            $fallback,
+        ];
+
+        foreach ($candidates as $candidate) {
+            $normalized = $this->normalizeImageUrl(is_string($candidate) ? $candidate : null);
+            if ($normalized !== null) {
+                return $normalized;
+            }
+        }
+
+        return '';
+    }
+
+    protected function buildImageUrlFromPath(mixed $imagePath): ?string
+    {
+        if (! is_string($imagePath) || trim($imagePath) === '') {
+            return null;
+        }
+
+        return '/storage/'.ltrim($imagePath, '/');
+    }
+
+    protected function normalizeImageUrl(?string $imageUrl): ?string
+    {
+        if ($imageUrl === null) {
+            return null;
+        }
+
+        $imageUrl = trim($imageUrl);
+        if ($imageUrl === '') {
+            return null;
+        }
+
+        if (str_starts_with($imageUrl, 'http://') || str_starts_with($imageUrl, 'https://')) {
+            return $imageUrl;
+        }
+
+        $appUrl = rtrim((string) config('app.url', ''), '/');
+        if ($appUrl === '') {
+            return $imageUrl;
+        }
+
+        if (str_starts_with($imageUrl, '/')) {
+            return $appUrl.$imageUrl;
+        }
+
+        return $appUrl.'/'.ltrim($imageUrl, '/');
+    }
+
+    protected function menuIdentityKey(array $menuData): string
+    {
+        $slug = trim((string) Arr::get($menuData, 'slug', ''));
+        if ($slug !== '') {
+            return 'slug:'.mb_strtolower($slug);
+        }
+
+        $name = trim((string) Arr::get($menuData, 'name', ''));
+        if ($name !== '') {
+            return 'name:'.mb_strtolower($name);
+        }
+
+        return 'unknown:'.md5((string) json_encode($menuData));
     }
 }

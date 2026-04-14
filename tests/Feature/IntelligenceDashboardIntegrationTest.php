@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\IntelligenceOrder;
+use App\Models\IntelligenceTrend;
 use App\Models\User;
 use Database\Seeders\IntelligenceDashboardDummySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -85,5 +86,76 @@ class IntelligenceDashboardIntegrationTest extends TestCase
             'queue_status' => 'done',
             'status' => 'done',
         ]);
+    }
+
+    public function test_dashboard_trend_groups_deduplicate_same_menu_and_keep_male_group_visible(): void
+    {
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+        ]);
+
+        IntelligenceTrend::query()->create([
+            'process_run_id' => null,
+            'title' => 'Ayam Bakar Sedang Naik (perempuan)',
+            'image_url' => 'https://example.com/a.jpg',
+            'caption' => 'A',
+            'score' => 90,
+            'source_timestamp' => now(),
+            'expires_at' => now()->addHour(),
+            'is_active' => true,
+            'sent_to_service_a' => true,
+            'payload' => ['menu' => ['slug' => 'ayam-bakar', 'name' => 'Ayam Bakar']],
+            'detected_at' => now()->subMinute(),
+        ]);
+
+        IntelligenceTrend::query()->create([
+            'process_run_id' => null,
+            'title' => 'Ayam Bakar Sedang Naik (perempuan)',
+            'image_url' => 'https://example.com/a2.jpg',
+            'caption' => 'A2',
+            'score' => 89,
+            'source_timestamp' => now(),
+            'expires_at' => now()->addHour(),
+            'is_active' => true,
+            'sent_to_service_a' => true,
+            'payload' => ['menu' => ['slug' => 'ayam-bakar', 'name' => 'Ayam Bakar']],
+            'detected_at' => now()->subSeconds(40),
+        ]);
+
+        IntelligenceTrend::query()->create([
+            'process_run_id' => null,
+            'title' => 'Jus Jeruk Sedang Naik (perempuan)',
+            'image_url' => 'https://example.com/j.jpg',
+            'caption' => 'J',
+            'score' => 80,
+            'source_timestamp' => now(),
+            'expires_at' => now()->addHour(),
+            'is_active' => true,
+            'sent_to_service_a' => true,
+            'payload' => ['menu' => ['slug' => 'jus-jeruk', 'name' => 'Jus Jeruk']],
+            'detected_at' => now()->subSeconds(20),
+        ]);
+
+        IntelligenceTrend::query()->create([
+            'process_run_id' => null,
+            'title' => 'Air Mineral Sedang Naik (laki-laki)',
+            'image_url' => 'https://example.com/m.jpg',
+            'caption' => 'M',
+            'score' => 70,
+            'source_timestamp' => now(),
+            'expires_at' => now()->addHour(),
+            'is_active' => true,
+            'sent_to_service_a' => true,
+            'payload' => ['menu' => ['slug' => 'air-mineral', 'name' => 'Air Mineral']],
+            'detected_at' => now()->subMinutes(10),
+        ]);
+
+        $response = $this->actingAs($user)->get(route('intelligence.dashboard'));
+
+        $response->assertOk();
+        $response->assertSee('Carousel Perempuan');
+        $response->assertSee('Carousel Laki-laki');
+        $response->assertSee('Jus Jeruk Sedang Naik (perempuan)');
+        $response->assertSee('Air Mineral Sedang Naik (laki-laki)');
     }
 }

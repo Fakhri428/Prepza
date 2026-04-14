@@ -13,6 +13,7 @@ class TrendInsightServiceTest extends TestCase
             'services.service_a.trend_min_repeat' => 1,
             'services.service_a.trend_placeholder_image' => 'https://example.com/trend.jpg',
             'services.service_a.trend_expire_minutes' => 30,
+            'app.url' => 'http://service-b.test',
         ]);
 
         $service = new TrendInsightService();
@@ -73,6 +74,7 @@ class TrendInsightServiceTest extends TestCase
         $this->assertSame('/storage/menus/ayam-geprek.jpg', $malePayload['menu']['image_url']);
         $this->assertSame('22000.00', $malePayload['menu']['price']);
         $this->assertTrue($malePayload['menu']['is_active']);
+        $this->assertSame('http://service-b.test/storage/menus/ayam-geprek.jpg', $malePayload['image_url']);
     }
 
     public function test_falls_back_to_generic_trend_when_gender_unknown(): void
@@ -95,5 +97,48 @@ class TrendInsightServiceTest extends TestCase
 
         $this->assertCount(1, $payloads);
         $this->assertSame('Nasi Goreng Sedang Naik', $payloads[0]['title']);
+    }
+
+    public function test_top_two_gender_trends_are_unique_menu_items(): void
+    {
+        config([
+            'services.service_a.trend_min_repeat_gender' => 1,
+            'services.service_a.trend_placeholder_image' => 'https://example.com/trend.jpg',
+        ]);
+
+        $service = new TrendInsightService();
+
+        $payloads = $service->buildTrendPayloadsByGender([
+            [
+                'gender' => 'male',
+                'items' => [
+                    ['item_name' => 'Es Teh', 'qty' => 3],
+                    ['item_name' => 'Esteh', 'qty' => 2],
+                    ['item_name' => 'Nasi Goreng', 'qty' => 2],
+                ],
+            ],
+        ], [
+            [
+                'name' => 'Es Teh',
+                'slug' => 'es-teh',
+                'image_url' => '/storage/menus/es-teh.jpg',
+                'aliases' => [
+                    ['alias' => 'Esteh'],
+                ],
+            ],
+            [
+                'name' => 'Nasi Goreng',
+                'slug' => 'nasi-goreng',
+                'image_url' => '/storage/menus/nasi-goreng.jpg',
+            ],
+        ]);
+
+        $malePayloads = collect($payloads)
+            ->filter(fn (array $payload) => str_contains((string) $payload['title'], '(laki-laki)'))
+            ->values();
+
+        $this->assertCount(2, $malePayloads);
+        $this->assertSame('es-teh', data_get($malePayloads[0], 'menu.slug'));
+        $this->assertSame('nasi-goreng', data_get($malePayloads[1], 'menu.slug'));
     }
 }

@@ -84,7 +84,9 @@ class IntelligenceDashboardController extends Controller
 
             $trendPayloads = $this->loadLatestStoredTrendsByGender();
             if ($trendPayloads === []) {
-                $trendPayloads = $trendInsightService->buildTrendPayloadsByGender($orders);
+                $trendPayloads = $this->buildTrendGroupsFromPayloads(
+                    $trendInsightService->buildTrendPayloadsByGender($orders)
+                );
             }
 
             $errorMessage = null;
@@ -101,7 +103,7 @@ class IntelligenceDashboardController extends Controller
                     'priority_counts' => $priorityCounts,
                 ],
                 'orders' => $analyzedOrders,
-                'trends' => $trendPayloads,
+                'trendGroups' => $trendPayloads,
             ]);
         } catch (Throwable $throwable) {
             return view('intelligence.dashboard', [
@@ -113,7 +115,7 @@ class IntelligenceDashboardController extends Controller
                     'priority_counts' => ['high' => 0, 'medium' => 0, 'low' => 0],
                 ],
                 'orders' => [],
-                'trends' => [],
+                'trendGroups' => [],
             ]);
         }
     }
@@ -185,14 +187,27 @@ class IntelligenceDashboardController extends Controller
                     ->orWhere('expires_at', '>', now());
             })
             ->latest('detected_at')
-            ->limit(20)
+            ->limit(300)
             ->get();
 
         if ($trends->isEmpty()) {
             return [];
         }
 
-        $grouped = [];
+        $grouped = [
+            'female' => [
+                'segment' => 'female',
+                'label' => 'Perempuan',
+                'slides' => [],
+                'picked_keys' => [],
+            ],
+            'male' => [
+                'segment' => 'male',
+                'label' => 'Laki-laki',
+                'slides' => [],
+                'picked_keys' => [],
+            ],
+        ];
 
         foreach ($trends as $trend) {
             $title = strtolower((string) $trend->title);
@@ -205,21 +220,165 @@ class IntelligenceDashboardController extends Controller
                 continue;
             }
 
-            if (isset($grouped[$segment])) {
+            if (count($grouped[$segment]['slides']) >= 2) {
                 continue;
             }
 
-            $grouped[$segment] = [
+            $menuKey = $this->trendMenuIdentityKey($trend);
+            if (in_array($menuKey, $grouped[$segment]['picked_keys'], true)) {
+                continue;
+            }
+
+            $imageUrl = $this->resolveTrendImageUrl($trend);
+
+            $grouped[$segment]['slides'][] = [
                 'title' => $trend->title,
-                'image_url' => $trend->image_url,
+                'image_url' => $imageUrl,
                 'caption' => $trend->caption,
                 'score' => $trend->score,
                 'source_timestamp' => optional($trend->source_timestamp)?->toIso8601String(),
                 'expires_at' => optional($trend->expires_at)?->toIso8601String(),
                 'is_active' => $trend->is_active,
             ];
+            $grouped[$segment]['picked_keys'][] = $menuKey;
+
+            if (count($grouped['female']['slides']) >= 2 && count($grouped['male']['slides']) >= 2) {
+                break;
+            }
         }
 
-        return array_values($grouped);
+        $result = [];
+        foreach (['female', 'male'] as $segment) {
+            if ($grouped[$segment]['slides'] !== []) {
+                unset($grouped[$segment]['picked_keys']);
+                $result[] = $grouped[$segment];
+            }
+        }
+
+        return $result;
+    }
+
+    protected function buildTrendGroupsFromPayloads(array $payloads): array
+    {
+        $grouped = [
+            'female' => [
+                'segment' => 'female',
+                'label' => 'Perempuan',
+                'slides' => [],
+            ],
+            'male' => [
+                'segment' => 'male',
+                'label' => 'Laki-laki',
+                'slides' => [],
+            ],
+        ];
+
+        foreach ($payloads as $payload) {
+            $title = strtolower((string) Arr::get($payload, 'title', ''));
+            $segment = null;
+
+            if (str_contains($title, 'perempuan')) {
+                $segment = 'female';
+            } elseif (str_contains($title, 'laki-laki')) {
+                $segment = 'male';
+            }
+
+            if ($segment === null || count($grouped[$segment]['slides']) >= 2) {
+                continue;
+            }
+
+            $grouped[$segment]['slides'][] = [
+                'title' => Arr::get($payload, 'title'),
+                'image_url' => $this->normalizeImageUrl((string) Arr::get($payload, 'image_url')),
+                'caption' => Arr::get($payload, 'caption'),
+                'score' => Arr::get($payload, 'score'),
+                'source_timestamp' => Arr::get($payload, 'source_timestamp'),
+                'expires_at' => Arr::get($payload, 'expires_at'),
+                'is_active' => (bool) Arr::get($payload, 'is_active', true),
+            ];
+        }
+
+        return array_values(array_filter($grouped, fn (array $group) => $group['slides'] !== []));
+    }
+
+    protected function resolveTrendImageUrl($trend): ?string
+    {
+        $placeholder = (string) config('services.service_a.trend_placeholder_image');
+        $stored = is_string($trend->image_url) ? trim($trend->image_url) : '';
+
+        $candidates = [];
+
+        if ($stored !== '' && $stored !== $placeholder) {
+            $candidates[] = $stored;
+        }
+
+        $candidates[] = Arr::get($trend->payload, 'menu.image_external_url');
+        $candidates[] = Arr::get($trend->payload, 'menu.image_url');
+
+        $imagePath = Arr::get($trend->payload, 'menu.image_path');
+        if (is_string($imagePath) && trim($imagePath) !== '') {
+            $candidates[] = '/storage/'.ltrim($imagePath, '/');
+        }
+
+        if ($stored !== '') {
+            $candidates[] = $stored;
+        }
+
+        if ($placeholder !== '') {
+            $candidates[] = $placeholder;
+        }
+
+        foreach ($candidates as $candidate) {
+            $normalized = $this->normalizeImageUrl(is_string($candidate) ? $candidate : null);
+            if ($normalized !== null) {
+                return $normalized;
+            }
+        }
+
+        return null;
+    }
+
+    protected function normalizeImageUrl(?string $imageUrl): ?string
+    {
+        if ($imageUrl === null) {
+            return null;
+        }
+
+        $imageUrl = trim($imageUrl);
+        if ($imageUrl === '') {
+            return null;
+        }
+
+        if (str_starts_with($imageUrl, 'http://') || str_starts_with($imageUrl, 'https://')) {
+            return $imageUrl;
+        }
+
+        $appUrl = rtrim((string) config('app.url', ''), '/');
+        if ($appUrl === '') {
+            return $imageUrl;
+        }
+
+        if (str_starts_with($imageUrl, '/')) {
+            return $appUrl.$imageUrl;
+        }
+
+        return $appUrl.'/'.ltrim($imageUrl, '/');
+    }
+
+    protected function trendMenuIdentityKey($trend): string
+    {
+        $slug = trim((string) Arr::get($trend->payload, 'menu.slug', ''));
+        if ($slug !== '') {
+            return 'slug:'.mb_strtolower($slug);
+        }
+
+        $name = trim((string) Arr::get($trend->payload, 'menu.name', ''));
+        if ($name !== '') {
+            return 'name:'.mb_strtolower($name);
+        }
+
+        $title = trim((string) $trend->title);
+
+        return $title !== '' ? 'title:'.mb_strtolower($title) : 'id:'.(string) $trend->id;
     }
 }

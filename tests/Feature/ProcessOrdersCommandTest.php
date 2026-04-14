@@ -221,6 +221,7 @@ class ProcessOrdersCommandTest extends TestCase
                         'id' => 99,
                         'name' => 'Es Teh',
                         'slug' => 'es-teh',
+                        'image_external_url' => 'https://cdn.example.com/menus/es-teh.jpg',
                         'price' => '5000.00',
                         'is_active' => true,
                         'category_id' => 3,
@@ -264,7 +265,7 @@ class ProcessOrdersCommandTest extends TestCase
 
         Http::assertSent(function ($request) {
             return $request->url() === 'http://service-a.test/api/queue/trends/update'
-                && $request['image_url'] === 'https://example.com/trend.jpg';
+                && $request['image_url'] === 'https://cdn.example.com/menus/es-teh.jpg';
         });
 
         $this->assertDatabaseHas('intelligence_orders', [
