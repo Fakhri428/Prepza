@@ -1,12 +1,89 @@
 <?php
 
 use App\Models\IntelligenceOrder;
+use App\Models\IntelligenceOrderItem;
 use App\Models\IntelligenceTrend;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Validator;
+
+Route::get('/mock/health', function (): JsonResponse {
+    return response()->json([
+        'status' => 'ok',
+        'mock' => 'service-a',
+        'time' => now()->toIso8601String(),
+    ]);
+});
+
+Route::post('/mock/seed-orders', function (): JsonResponse {
+    $seedData = [
+        ['id' => 1, 'status' => 'waiting', 'customer_name' => 'Budi', 'items' => [['id' => 101, 'item_name' => 'Es Teh', 'qty' => 2, 'subtotal' => 10000]]],
+        ['id' => 2, 'status' => 'waiting', 'customer_name' => 'Siti', 'items' => [['id' => 201, 'item_name' => 'Jus Alpukat', 'qty' => 1, 'subtotal' => 15000], ['id' => 202, 'item_name' => 'Nasi Goreng', 'qty' => 1, 'subtotal' => 20000]]],
+        ['id' => 3, 'status' => 'queued', 'customer_name' => 'Andi', 'items' => [['id' => 301, 'item_name' => 'Kentang Goreng', 'qty' => 2, 'subtotal' => 18000]]],
+        ['id' => 4, 'status' => 'waiting', 'customer_name' => 'Rina', 'items' => [['id' => 401, 'item_name' => 'Nasi Goreng', 'qty' => 1, 'subtotal' => 20000]]],
+        ['id' => 5, 'status' => 'processing', 'customer_name' => 'Dewi', 'items' => [['id' => 501, 'item_name' => 'Ayam Bakar', 'qty' => 1, 'subtotal' => 25000]]],
+        ['id' => 6, 'status' => 'queued', 'customer_name' => 'Yoga', 'items' => [['id' => 601, 'item_name' => 'Es Teh', 'qty' => 1, 'subtotal' => 5000], ['id' => 602, 'item_name' => 'Kentang Goreng', 'qty' => 1, 'subtotal' => 9000]]],
+        ['id' => 7, 'status' => 'waiting', 'customer_name' => 'Nina', 'items' => [['id' => 701, 'item_name' => 'Nasi Goreng', 'qty' => 2, 'subtotal' => 40000], ['id' => 702, 'item_name' => 'Ayam Bakar', 'qty' => 1, 'subtotal' => 25000]]],
+        ['id' => 8, 'status' => 'waiting', 'customer_name' => 'Fajar', 'items' => [['id' => 801, 'item_name' => 'Jus Alpukat', 'qty' => 3, 'subtotal' => 45000]]],
+        ['id' => 9, 'status' => 'queued', 'customer_name' => 'Mila', 'items' => [['id' => 901, 'item_name' => 'Kentang Goreng', 'qty' => 1, 'subtotal' => 9000], ['id' => 902, 'item_name' => 'Ayam Bakar', 'qty' => 1, 'subtotal' => 25000]]],
+        ['id' => 10, 'status' => 'waiting', 'customer_name' => 'Rafi', 'items' => [['id' => 1001, 'item_name' => 'Nasi Goreng', 'qty' => 1, 'subtotal' => 20000], ['id' => 1002, 'item_name' => 'Es Teh', 'qty' => 1, 'subtotal' => 5000], ['id' => 1003, 'item_name' => 'Kentang Goreng', 'qty' => 1, 'subtotal' => 9000]]],
+    ];
+
+    $syncedAt = now();
+
+    foreach ($seedData as $order) {
+        $total = collect($order['items'])->sum(fn (array $item) => (float) $item['subtotal']);
+
+        $localOrder = IntelligenceOrder::query()->updateOrCreate(
+            ['service_a_order_id' => (int) $order['id']],
+            [
+                'order_code' => 'SIM-'.str_pad((string) $order['id'], 4, '0', STR_PAD_LEFT),
+                'customer_name' => $order['customer_name'],
+                'gender' => 'male',
+                'status' => $order['status'],
+                'external_status' => $order['status'] === 'processing' ? 'processing' : 'waiting',
+                'external_note' => 'Seed by mock endpoint',
+                'external_updated_at' => $syncedAt,
+                'total_amount' => $total,
+                'queue_number' => $order['id'],
+                'queue_status' => $order['status'],
+                'service_a_created_at' => $syncedAt,
+                'last_synced_at' => $syncedAt,
+            ]
+        );
+
+        $localOrder->items()->delete();
+
+        foreach ($order['items'] as $item) {
+            $localOrder->items()->create([
+                'service_a_item_id' => $item['id'],
+                'item_name' => $item['item_name'],
+                'note' => null,
+                'qty' => $item['qty'],
+                'subtotal' => $item['subtotal'],
+                'last_synced_at' => $syncedAt,
+            ]);
+        }
+    }
+
+    return response()->json([
+        'status' => 'ok',
+        'message' => 'Mock orders berhasil di-seed.',
+        'total_orders' => count($seedData),
+    ]);
+});
+
+Route::delete('/mock/reset-orders', function (): JsonResponse {
+    IntelligenceOrderItem::query()->delete();
+    IntelligenceOrder::query()->delete();
+
+    return response()->json([
+        'status' => 'ok',
+        'message' => 'Mock orders berhasil di-reset.',
+    ]);
+});
 
 Route::get('/categories', function (): JsonResponse {
     return response()->json([
