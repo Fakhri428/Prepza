@@ -17,10 +17,11 @@ Dokumen ini menjelaskan kontrak integrasi antara Layer 1 (sistem Laravel ini) da
 ## Konvensi Status
 
 ### external_status (sinkronisasi dari Layer 2)
-Hanya 3 nilai yang dipakai:
+Nilai yang dipakai:
 - waiting
 - processing
 - done
+- cancelled
 
 Catatan kompatibilitas:
 - Nilai lama not_set/received dinormalisasi ke waiting.
@@ -207,13 +208,13 @@ Layer 2 mengirim perubahan status proses/selesai untuk order tertentu.
 - order: id order (integer)
 
 ### Body JSON
-- external_status: nullable, enum waiting|processing|done
+- external_status: nullable, enum waiting|processing|done|cancelled
 - external_note: nullable, string max 500
 - queue_status: nullable, enum waiting|processing|done|cancelled
 
 Catatan perilaku:
 - Jika queue_status tidak dikirim tapi external_status dikirim, sistem otomatis menyamakan queue_status = external_status.
-- Jika queue_status = cancelled, queue internal disimpan sebagai done (sesuai implementasi saat ini).
+- Jika external_status = cancelled, order internal ditandai cancelled.
 
 ### Contoh Request (proses)
 ```json
@@ -228,6 +229,14 @@ Catatan perilaku:
 {
   "external_status": "done",
   "external_note": "siap diambil"
+}
+```
+
+### Contoh Request (dibatalkan)
+```json
+{
+  "external_status": "cancelled",
+  "external_note": "dibatalkan oleh kasir"
 }
 ```
 
@@ -266,10 +275,10 @@ Catatan perilaku:
 ### Contoh Response 422 (validasi)
 ```json
 {
-  "message": "The external status field must be one of: waiting, processing, done.",
+  "message": "The external status field must be one of: waiting, processing, done, cancelled.",
   "errors": {
     "external_status": [
-      "The external status field must be one of: waiting, processing, done."
+      "The external status field must be one of: waiting, processing, done, cancelled."
     ]
   }
 }
@@ -354,7 +363,7 @@ Catatan integrasi terbaru:
 Untuk sinkron status, Layer 2 cukup kirim ke external-update:
 ```json
 {
-  "external_status": "waiting|processing|done",
+  "external_status": "waiting|processing|done|cancelled",
   "external_note": "opsional"
 }
 ```

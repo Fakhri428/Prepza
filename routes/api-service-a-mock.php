@@ -186,7 +186,7 @@ Route::get('/queue/orders', function (Request $request): JsonResponse {
 
 Route::patch('/queue/orders/{order}/external-update', function (Request $request, int $order): JsonResponse {
     $validator = Validator::make($request->all(), [
-        'external_status' => ['nullable', 'in:waiting,processing,done'],
+        'external_status' => ['nullable', 'in:waiting,processing,done,cancelled'],
         'external_note' => ['nullable', 'string', 'max:500'],
         'queue_status' => ['nullable', 'in:waiting,processing,done,cancelled'],
     ]);
@@ -215,10 +215,10 @@ Route::patch('/queue/orders/{order}/external-update', function (Request $request
     $target->external_note = $request->input('external_note', $target->external_note);
     $target->external_updated_at = now();
     if ($queueStatus !== null) {
-        $target->queue_status = $queueStatus === 'cancelled' ? 'done' : $queueStatus;
+        $target->queue_status = $queueStatus;
     }
-    if ($externalStatus === 'done') {
-        $target->status = 'done';
+    if (in_array($externalStatus, ['done', 'cancelled'], true)) {
+        $target->status = $externalStatus;
     }
     $target->save();
 

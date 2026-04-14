@@ -211,7 +211,7 @@ class ProcessOrders extends Command
             $orderStatus = strtolower((string) Arr::get($order, 'status', ''));
             $preparedStatus = strtolower((string) Arr::get($entry, 'payload.external_status', ''));
 
-            if (in_array($orderStatus, ['done', 'cancelled'], true) || $preparedStatus === 'done') {
+            if (in_array($orderStatus, ['done', 'cancelled'], true) || in_array($preparedStatus, ['done', 'cancelled'], true)) {
                 continue;
             }
 
@@ -292,13 +292,17 @@ class ProcessOrders extends Command
             return $payload;
         }
 
-        $externalStatus = in_array($orderStatus, ['done', 'cancelled'], true)
-            ? 'done'
-            : (string) Arr::get($analysis, 'external_status', 'waiting');
+        $externalStatus = $orderStatus === 'cancelled'
+            ? 'cancelled'
+            : ($orderStatus === 'done'
+                ? 'done'
+                : (string) Arr::get($analysis, 'external_status', 'waiting'));
 
-        $externalNote = in_array($orderStatus, ['done', 'cancelled'], true)
-            ? 'Pesanan ditandai selesai pada sinkronisasi Service B.'
-            : (string) Arr::get($analysis, 'external_note', '');
+        $externalNote = $orderStatus === 'cancelled'
+            ? 'Pesanan ditandai dibatalkan pada sinkronisasi Service B.'
+            : ($orderStatus === 'done'
+                ? 'Pesanan ditandai selesai pada sinkronisasi Service B.'
+                : (string) Arr::get($analysis, 'external_note', ''));
 
         $noteMaxLength = max(1, (int) config('services.service_a.note_max_length', 500));
         $externalNote = trim(mb_substr($externalNote, 0, $noteMaxLength));
