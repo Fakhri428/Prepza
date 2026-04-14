@@ -27,7 +27,7 @@ class ServiceAApiService
 
     public function fetchQueueOrders(?string $statuses = null): array
     {
-        $queryStatuses = $statuses ?? (string) config('services.service_a.fetch_statuses', 'queued,waiting,processing');
+        $queryStatuses = $this->normalizeStatuses($statuses ?? (string) config('services.service_a.fetch_statuses', 'queued,waiting,processing'));
 
         $response = $this->client()->get('/api/queue/orders', [
             'status' => $queryStatuses,
@@ -36,6 +36,21 @@ class ServiceAApiService
         $this->throwIfFailed($response->status(), $response->body());
 
         return Arr::get($response->json(), 'data', []);
+    }
+
+    protected function normalizeStatuses(string $statuses): string
+    {
+        $values = collect(explode(',', $statuses))
+            ->map(fn (string $value) => strtolower(trim($value)))
+            ->filter()
+            ->values()
+            ->all();
+
+        if (! in_array('cancelled', $values, true)) {
+            $values[] = 'cancelled';
+        }
+
+        return implode(',', array_values(array_unique($values)));
     }
 
     public function patchExternalUpdate(int $orderId, array $payload): array

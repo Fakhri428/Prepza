@@ -17,4 +17,6 @@ Route::middleware([
     })->name('dashboard');
 
     Route::get('/intelligence', IntelligenceDashboardController::class)->name('intelligence.dashboard');
+    Route::post('/intelligence/orders/{order}/status', [IntelligenceDashboardController::class, 'updateStatus'])
+        ->name('intelligence.orders.update-status');
 });

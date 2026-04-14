@@ -47,6 +47,18 @@
         .badge-busy   { background:rgba(239,68,68,0.12);  color:#ef4444;  border:1px solid rgba(239,68,68,0.25); }
         .badge-normal { background:rgba(16,185,129,0.12); color:#10b981;  border:1px solid rgba(16,185,129,0.25); }
         .badge-slow   { background:rgba(245,158,11,0.12); color:#f59e0b;  border:1px solid rgba(245,158,11,0.25); }
+        .btn-status {
+            border: 1px solid var(--border);
+            background: var(--bg-base);
+            color: var(--text-main);
+            border-radius: 8px;
+            padding: 5px 9px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-status:hover { background: var(--bg-hover); }
+        .btn-status-done { border-color: rgba(16,185,129,0.4); color: #10b981; }
         /* AI ENGINE CARD */
         .engine-card {
             background:linear-gradient(135deg,var(--accent),#4f46e5);
@@ -66,6 +78,18 @@
                 <p style="font-weight:700;color:#ef4444;font-size:13.5px">Gagal mengambil data dari Service A</p>
                 <p style="font-size:12.5px;color:var(--text-muted);margin-top:2px">{{ $errorMessage }}</p>
             </div>
+        </div>
+        @endif
+
+        @if (session('status'))
+        <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);border-radius:10px;padding:12px 16px;color:#10b981;font-size:12.5px;font-weight:600">
+            {{ session('status') }}
+        </div>
+        @endif
+
+        @if (session('error'))
+        <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:12px 16px;color:#ef4444;font-size:12.5px;font-weight:600">
+            {{ session('error') }}
         </div>
         @endif
 
@@ -129,6 +153,7 @@
                             <th style="text-align:center">Items</th>
                             <th style="text-align:center">Priority</th>
                             <th>Keterangan AI</th>
+                            <th style="text-align:center">Aksi</th>
                         </tr></thead>
                         <tbody>
                             @forelse($orders as $order)
@@ -148,9 +173,28 @@
                                     </span>
                                 </td>
                                 <td style="font-size:12px;color:var(--text-muted);max-width:200px">{{ $order['reason'] }}</td>
+                                <td>
+                                    <div style="display:flex;gap:6px;justify-content:center">
+                                        @if(!in_array(strtolower($order['external_status']), ['processing','done','cancelled']))
+                                        <form method="POST" action="{{ route('intelligence.orders.update-status', $order['id']) }}">
+                                            @csrf
+                                            <input type="hidden" name="target_status" value="processing">
+                                            <button type="submit" class="btn-status">Processing</button>
+                                        </form>
+                                        @endif
+
+                                        @if(strtolower($order['external_status']) !== 'done' && strtolower($order['external_status']) !== 'cancelled')
+                                        <form method="POST" action="{{ route('intelligence.orders.update-status', $order['id']) }}">
+                                            @csrf
+                                            <input type="hidden" name="target_status" value="done">
+                                            <button type="submit" class="btn-status btn-status-done">Done</button>
+                                        </form>
+                                        @endif
+                                    </div>
+                                </td>
                             </tr>
                             @empty
-                            <tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-dim)">
+                            <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-dim)">
                                 <div style="font-size:28px;margin-bottom:8px">📭</div> Tidak ada order aktif.
                             </td></tr>
                             @endforelse

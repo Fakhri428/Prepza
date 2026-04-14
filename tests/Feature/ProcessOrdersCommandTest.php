@@ -393,4 +393,33 @@ class ProcessOrdersCommandTest extends TestCase
                 && $request['external_status'] === 'done';
         });
     }
+
+    public function test_fetch_queue_orders_always_includes_cancelled_status(): void
+    {
+        config([
+            'services.service_a.base_url' => 'http://service-a.test',
+            'services.service_a.fetch_statuses' => 'queued,waiting,processing',
+            'services.service_a.trend_min_repeat' => 99,
+            'services.service_a.trend_min_repeat_gender' => 99,
+        ]);
+
+        Http::fake([
+            'http://service-a.test/api/categories' => Http::response(['data' => []], 200),
+            'http://service-a.test/api/menus' => Http::response(['data' => []], 200),
+            'http://service-a.test/api/queue/orders*' => Http::response(['data' => []], 200),
+            'http://service-a.test/api/queue/trends/update' => Http::response(['status' => 'ok'], 200),
+        ]);
+
+        $this->artisan('queue:process-orders')->assertSuccessful();
+
+        Http::assertSent(function ($request) {
+            if (! str_starts_with($request->url(), 'http://service-a.test/api/queue/orders')) {
+                return false;
+            }
+
+            $status = strtolower((string) data_get($request->data(), 'status', ''));
+
+            return str_contains($status, 'cancelled');
+        });
+    }
 }

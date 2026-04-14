@@ -2,15 +2,54 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ServiceARequestException;
 use App\Models\IntelligenceOrder;
 use App\Models\IntelligenceTrend;
 use App\Services\OrderAnalyzer;
+use App\Services\ServiceAApiService;
 use App\Services\TrendInsightService;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Throwable;
 
 class IntelligenceDashboardController extends Controller
 {
+    public function updateStatus(Request $request, ServiceAApiService $apiService, IntelligenceOrder $order): RedirectResponse
+    {
+        $validated = $request->validate([
+            'target_status' => ['required', 'in:processing,done'],
+        ]);
+
+        $targetStatus = (string) Arr::get($validated, 'target_status');
+
+        try {
+            $apiService->patchExternalUpdate((int) $order->service_a_order_id, [
+                'external_status' => $targetStatus,
+                'external_note' => 'Status diubah manual dari dashboard Service B.',
+                'queue_status' => $targetStatus,
+            ]);
+
+            $order->external_status = $targetStatus;
+            $order->queue_status = $targetStatus;
+            $order->external_note = 'Status diubah manual dari dashboard Service B.';
+            $order->external_updated_at = Carbon::now();
+
+            if ($targetStatus === 'done') {
+                $order->status = 'done';
+            }
+
+            $order->save();
+
+            return back()->with('status', "Status order {$order->order_code} berhasil diubah ke {$targetStatus}.");
+        } catch (ServiceARequestException $exception) {
+            return back()->with('error', 'Gagal update ke Service A: '.$exception->getMessage());
+        } catch (Throwable $throwable) {
+            return back()->with('error', 'Gagal update status: '.$throwable->getMessage());
+        }
+    }
+
     public function __invoke(
         OrderAnalyzer $analyzer,
         TrendInsightService $trendInsightService,
