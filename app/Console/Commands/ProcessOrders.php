@@ -138,7 +138,7 @@ class ProcessOrders extends Command
                 }
             }
 
-            $trendPayloads = $this->trendInsightService->buildTrendPayloadsByGender($orders);
+            $trendPayloads = $this->trendInsightService->buildTrendPayloadsByGender($orders, $menus);
             foreach ($trendPayloads as $trendPayload) {
                 $sentToServiceA = false;
 

@@ -296,7 +296,8 @@ Layer 2 mengirim data tren makanan terbaru untuk ditampilkan di queue board.
 
 Catatan integrasi terbaru:
 - Service B mengirim trend insight terpisah berdasarkan gender (`male`/`female`).
-- Segmentasi gender disisipkan di `title` dan `caption` (contoh: `(...laki-laki)` atau `(...perempuan)`) tanpa mengubah kontrak field endpoint.
+- Segmentasi gender disisipkan di `title` dan `caption` (contoh: `(...laki-laki)` atau `(...perempuan)`).
+- Service B menyertakan detail menu utama pada field `menu` agar data trend sinkron dengan master menu Service A.
 
 ### Body JSON
 - title: required, string max 120
@@ -306,6 +307,15 @@ Catatan integrasi terbaru:
 - source_timestamp: nullable, date
 - expires_at: nullable, date (harus setelah waktu sekarang)
 - is_active: nullable, boolean (default true)
+- menu: nullable, object
+  - name: nullable, string
+  - slug: nullable, string
+  - description: nullable, string
+  - image_path: nullable, string
+  - image_external_url: nullable, url
+  - image_url: nullable, string/url
+  - price: nullable, numeric/string
+  - is_active: nullable, boolean
 
 ### Contoh Request
 ```json
@@ -316,7 +326,17 @@ Catatan integrasi terbaru:
   "score": 91,
   "source_timestamp": "2026-04-12T16:00:00+07:00",
   "expires_at": "2026-04-12T23:59:59+07:00",
-  "is_active": true
+  "is_active": true,
+  "menu": {
+    "name": "Ayam Geprek",
+    "slug": "ayam-geprek",
+    "description": "Ayam geprek pedas",
+    "image_path": "menus/ayam-geprek.jpg",
+    "image_external_url": null,
+    "image_url": "/storage/menus/ayam-geprek.jpg",
+    "price": "22000.00",
+    "is_active": true
+  }
 }
 ```
 

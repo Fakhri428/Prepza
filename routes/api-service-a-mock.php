@@ -251,6 +251,15 @@ Route::post('/queue/trends/update', function (Request $request): JsonResponse {
         'source_timestamp' => ['nullable', 'date'],
         'expires_at' => ['nullable', 'date', 'after:now'],
         'is_active' => ['nullable', 'boolean'],
+        'menu' => ['nullable', 'array'],
+        'menu.name' => ['nullable', 'string', 'max:255'],
+        'menu.slug' => ['nullable', 'string', 'max:255'],
+        'menu.description' => ['nullable', 'string'],
+        'menu.image_path' => ['nullable', 'string', 'max:2048'],
+        'menu.image_external_url' => ['nullable', 'url', 'max:2048'],
+        'menu.image_url' => ['nullable', 'string', 'max:2048'],
+        'menu.price' => ['nullable'],
+        'menu.is_active' => ['nullable', 'boolean'],
     ]);
 
     if ($validator->fails()) {

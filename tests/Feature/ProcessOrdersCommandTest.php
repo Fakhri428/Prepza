@@ -135,6 +135,16 @@ class ProcessOrdersCommandTest extends TestCase
 
         Http::assertSent(function ($request) {
             return $request->url() === 'http://service-a.test/api/queue/trends/update'
+                && str_contains((string) $request['title'], '(laki-laki)')
+                && (string) data_get($request->data(), 'menu.name') === 'Ayam Geprek'
+                && (string) data_get($request->data(), 'menu.slug') === 'ayam-geprek'
+                && data_get($request->data(), 'menu.description') === null
+                && (string) data_get($request->data(), 'menu.price') === '22000.00'
+                && (bool) data_get($request->data(), 'menu.is_active') === true;
+        });
+
+        Http::assertSent(function ($request) {
+            return $request->url() === 'http://service-a.test/api/queue/trends/update'
                 && str_contains((string) $request['title'], '(perempuan)');
         });
 
