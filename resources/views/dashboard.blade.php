@@ -82,12 +82,16 @@
                 </div>
                 <h1 style="font-size:20px;font-weight:800;margin-bottom:6px;color:var(--text-main)">Selamat datang, {{ Auth::user()->name }} 👋</h1>
                 <p style="font-size:13px;color:var(--text-muted);line-height:1.6;max-width:480px">Platform AI-driven untuk mengolah antrian secara real-time. Gunakan Intelligence Dashboard untuk analisis mendalam.</p>
-                <a href="{{ url('/intelligence/dashboard') }}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,var(--accent),#5b52e8);color:#fff;padding:9px 18px;border-radius:9px;font-size:13px;font-weight:700;text-decoration:none;margin-top:14px;box-shadow:0 4px 14px rgba(108,99,255,0.3)">
+                <a href="{{ route('intelligence.dashboard') }}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,var(--accent),#5b52e8);color:#fff;padding:9px 18px;border-radius:9px;font-size:13px;font-weight:700;text-decoration:none;margin-top:14px;box-shadow:0 4px 14px rgba(108,99,255,0.3)">
                     🧠 Buka Intelligence Dashboard →
                 </a>
             </div>
             <div style="display:flex;gap:12px;flex-shrink:0">
-                @foreach([['98.7%','Uptime','#6c63ff'],['<2ms','Latency','#10b981'],['3.4K','Req/mnt','#f59e0b']] as [$v,$l,$c])
+                @foreach([
+                    [number_format((int) ($stats['total_orders'] ?? 0)).' aktif','Order Aktif','#6c63ff'],
+                    [number_format((int) ($stats['processing_orders'] ?? 0)),'Processing','#10b981'],
+                    [number_format((int) ($stats['completed_today'] ?? 0)),'Done Hari Ini','#f59e0b']
+                ] as [$v,$l,$c])
                 <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:14px 18px;text-align:center;min-width:80px">
                     <div style="font-size:20px;font-weight:800;color:{{$c}}">{{$v}}</div>
                     <div style="font-size:10.5px;color:var(--text-dim);margin-top:2px">{{$l}}</div>
@@ -98,20 +102,26 @@
 
         {{-- STAT CARDS --}}
         <div class="db-grid-4">
+            @php
+                $dailyRevenue = 'Rp '.number_format((float) ($stats['daily_revenue'] ?? 0), 0, ',', '.');
+                $monthlyRevenue = 'Rp '.number_format((float) ($stats['monthly_revenue'] ?? 0), 0, ',', '.');
+            @endphp
             @foreach([
-                ['Total Antrian','1,245','🗂️','rgba(108,99,255,0.12)','+12%','up'],
-                ['Sedang Diproses','310','⚙️','rgba(0,212,170,0.1)','+5%','up'],
-                ['Priority High','48','⚠️','rgba(239,68,68,0.1)','-3%','down'],
-                ['Selesai Hari Ini','887','✅','rgba(16,185,129,0.1)','+8%','up'],
-            ] as [$label,$val,$icon,$ibg,$change,$dir])
+                ['Total Antrian Aktif', number_format((int) ($stats['total_orders'] ?? 0)), '🗂️', 'rgba(108,99,255,0.12)'],
+                ['Sedang Diproses', number_format((int) ($stats['processing_orders'] ?? 0)), '⚙️', 'rgba(0,212,170,0.1)'],
+                ['Priority High', number_format((int) ($stats['high_priority'] ?? 0)), '⚠️', 'rgba(239,68,68,0.1)'],
+                ['Selesai Hari Ini', number_format((int) ($stats['completed_today'] ?? 0)), '✅', 'rgba(16,185,129,0.1)'],
+                ['Total Pemasukan Harian', $dailyRevenue, '💰', 'rgba(16,185,129,0.12)'],
+                ['Total Pemasukan Bulanan', $monthlyRevenue, '🏦', 'rgba(108,99,255,0.12)'],
+                ['Total Order Hari Ini', number_format((int) ($stats['orders_today'] ?? 0)), '📅', 'rgba(245,158,11,0.12)'],
+                ['Total Order Bulan Ini', number_format((int) ($stats['orders_month'] ?? 0)), '🗓️', 'rgba(0,212,170,0.12)'],
+            ] as [$label,$val,$icon,$ibg])
             <div class="card card-pad">
                 <div style="display:flex;align-items:flex-start;justify-content:space-between">
                     <div>
                         <div class="stat-label">{{$label}}</div>
                         <div class="stat-num" style="color:var(--text-main)">{{$val}}</div>
-                        <div class="stat-change {{$dir==='up'?'change-up':'change-down'}}">
-                            {{$dir==='up'?'↑':'↓'}} {{$change}} vs kemarin
-                        </div>
+                        <div class="stat-change" style="color:var(--text-dim)">Data real-time dari database lokal</div>
                     </div>
                     <div class="stat-icon" style="background:{{$ibg}}">{{$icon}}</div>
                 </div>
@@ -128,13 +138,13 @@
                 </div>
                 <div style="padding:16px 20px">
                     <div class="chart-bars">
-                        @foreach([35,52,48,70,45,60,75,88,65,55,80,90,72,68,85,92,78,65,55,70,82,75,60,45] as $h)
-                        <div class="chart-bar" style="height:{{$h}}%"></div>
+                        @foreach($throughputChart as $point)
+                        <div class="chart-bar" style="height:{{ max(4, (int) $point['height']) }}%" title="{{ $point['label'] }}:00 · {{ $point['count'] }} order"></div>
                         @endforeach
                     </div>
                     <div class="chart-labels">
-                        @foreach(['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'] as $lbl)
-                        <span class="chart-lbl" style="display:{{($loop->index % 3 === 0)?'block':'none'}}">{{$lbl}}</span>
+                        @foreach($throughputChart as $point)
+                        <span class="chart-lbl" style="display:{{($loop->index % 3 === 0)?'block':'none'}}">{{ $point['label'] }}</span>
                         @endforeach
                     </div>
                 </div>
@@ -143,28 +153,22 @@
             {{-- Donut Chart --}}
             <div class="card">
                 <div class="card-hdr">
-                    <div><div class="card-title">Distribusi Keputusan AI</div><div class="card-sub">Berdasarkan metode reasoning</div></div>
+                    <div><div class="card-title">Distribusi Status Order</div><div class="card-sub">Berdasarkan data status pada database</div></div>
                 </div>
+                @php
+                    $totalStatusOrders = collect($statusDistribution)->sum('count');
+                @endphp
                 <div class="donut-wrap">
-                    <svg class="donut-svg" width="100" height="100" viewBox="0 0 100 100">
-                        <circle cx="50" cy="50" r="38" fill="none" stroke="var(--border)" stroke-width="16"/>
-                        <circle cx="50" cy="50" r="38" fill="none" stroke="#6c63ff" stroke-width="16"
-                            stroke-dasharray="95 144" stroke-dashoffset="0" transform="rotate(-90 50 50)"/>
-                        <circle cx="50" cy="50" r="38" fill="none" stroke="#00d4aa" stroke-width="16"
-                            stroke-dasharray="67 172" stroke-dashoffset="-95" transform="rotate(-90 50 50)"/>
-                        <circle cx="50" cy="50" r="38" fill="none" stroke="#f59e0b" stroke-width="16"
-                            stroke-dasharray="48 191" stroke-dashoffset="-162" transform="rotate(-90 50 50)"/>
-                        <circle cx="50" cy="50" r="38" fill="none" stroke="#ef4444" stroke-width="16"
-                            stroke-dasharray="29 210" stroke-dashoffset="-210" transform="rotate(-90 50 50)"/>
-                        <text x="50" y="47" text-anchor="middle" font-size="10" font-weight="700" fill="var(--text-main)">AI</text>
-                        <text x="50" y="57" text-anchor="middle" font-size="7" fill="var(--text-dim)">Engine</text>
-                    </svg>
+                    <div class="donut-svg" style="width:100px;height:100px;border-radius:50%;border:10px solid var(--border);display:flex;align-items:center;justify-content:center;flex-direction:column">
+                        <div style="font-size:20px;font-weight:800;color:var(--text-main)">{{ $totalStatusOrders }}</div>
+                        <div style="font-size:10px;color:var(--text-dim)">Total</div>
+                    </div>
                     <div>
-                        @foreach([['#6c63ff','Rule-based','40%'],['#00d4aa','AI Reasoning','28%'],['#f59e0b','Hybrid','20%'],['#ef4444','Manual','12%']] as [$c,$l,$p])
+                        @foreach($statusDistribution as $status)
                         <div class="legend-item">
-                            <div class="legend-dot" style="background:{{$c}}"></div>
-                            <span style="color:var(--text-muted)">{{$l}}</span>
-                            <span style="font-weight:600;color:var(--text-main);margin-left:auto">{{$p}}</span>
+                            <div class="legend-dot" style="background:{{ $status['color'] }}"></div>
+                            <span style="color:var(--text-muted)">{{ $status['label'] }}</span>
+                            <span style="font-weight:600;color:var(--text-main);margin-left:auto">{{ $status['count'] }} ({{ $status['percentage'] }}%)</span>
                         </div>
                         @endforeach
                     </div>
@@ -177,14 +181,14 @@
             {{-- AI Capabilities --}}
             <div class="card">
                 <div class="card-hdr">
-                    <div><div class="card-title">Kapabilitas AI Engine</div><div class="card-sub">Hybrid Rule-Based + AI Reasoning</div></div>
+                    <div><div class="card-title">Kinerja Sistem Berdasarkan Data</div><div class="card-sub">Ringkasan metrik operasional</div></div>
                 </div>
                 <div class="card-pad">
-                    @foreach([['Analisis Kondisi Real-time',94],['Optimasi Prioritas Pesanan',88],['Deteksi Bottleneck',91],['Insight Strategis',79],['Skalabilitas Adaptif',96]] as [$lbl,$pct])
+                    @foreach($engineMetrics as $metric)
                     <div class="bar-row">
-                        <span class="bar-label">{{$lbl}}</span>
-                        <div class="bar-track"><div class="bar-fill" style="width:{{$pct}}%"></div></div>
-                        <span class="bar-pct">{{$pct}}%</span>
+                        <span class="bar-label">{{ $metric['label'] }}</span>
+                        <div class="bar-track"><div class="bar-fill" style="width:{{ $metric['percentage'] }}%"></div></div>
+                        <span class="bar-pct">{{ $metric['percentage'] }}%</span>
                     </div>
                     @endforeach
                 </div>
