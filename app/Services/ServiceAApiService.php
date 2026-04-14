@@ -9,6 +9,14 @@ use Illuminate\Support\Facades\Http;
 
 class ServiceAApiService
 {
+    public function fetchCategories(): array
+    {
+        $response = $this->client()->get('/api/categories');
+        $this->throwIfFailed($response->status(), $response->body());
+
+        return Arr::get($response->json(), 'data', []);
+    }
+
     public function fetchMenus(): array
     {
         $response = $this->client()->get('/api/menus');

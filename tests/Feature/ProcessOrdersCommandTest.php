@@ -25,10 +25,54 @@ class ProcessOrdersCommandTest extends TestCase
         ]);
 
         Http::fake([
+            'http://service-a.test/api/categories' => Http::response([
+                'data' => [
+                    [
+                        'id' => 1,
+                        'name' => 'Makanan Berat',
+                        'slug' => 'makanan-berat',
+                        'description' => 'Kategori makanan berat',
+                        'is_active' => true,
+                        'menu_count' => 1,
+                        'created_at' => now()->subDay()->toIso8601String(),
+                    ],
+                    [
+                        'id' => 2,
+                        'name' => 'Makanan Ringan',
+                        'slug' => 'makanan-ringan',
+                        'description' => 'Kategori makanan ringan',
+                        'is_active' => true,
+                        'menu_count' => 1,
+                        'created_at' => now()->subDay()->toIso8601String(),
+                    ],
+                ],
+            ], 200),
             'http://service-a.test/api/menus' => Http::response([
                 'data' => [
-                    ['name' => 'Ayam Geprek', 'category' => ['name' => 'Makanan Berat']],
-                    ['name' => 'Salad Buah', 'category' => ['name' => 'Makanan Ringan']],
+                    [
+                        'id' => 10,
+                        'name' => 'Ayam Geprek',
+                        'slug' => 'ayam-geprek',
+                        'price' => '22000.00',
+                        'is_active' => true,
+                        'category_id' => 1,
+                        'category' => ['id' => 1, 'name' => 'Makanan Berat', 'slug' => 'makanan-berat'],
+                        'aliases' => [
+                            ['id' => 501, 'alias' => 'geprek', 'normalized_alias' => 'geprek'],
+                        ],
+                    ],
+                    [
+                        'id' => 20,
+                        'name' => 'Salad Buah',
+                        'slug' => 'salad-buah',
+                        'price' => '18000.00',
+                        'is_active' => true,
+                        'category_id' => 2,
+                        'category' => ['id' => 2, 'name' => 'Makanan Ringan', 'slug' => 'makanan-ringan'],
+                        'aliases' => [
+                            ['id' => 502, 'alias' => 'salbu', 'normalized_alias' => 'salbu'],
+                        ],
+                    ],
                 ],
             ], 200),
             'http://service-a.test/api/queue/orders*' => Http::response([
@@ -115,6 +159,23 @@ class ProcessOrdersCommandTest extends TestCase
             'title' => 'Salad Buah Sedang Naik (perempuan)',
             'sent_to_service_a' => 1,
         ]);
+
+        $this->assertDatabaseHas('intelligence_categories', [
+            'service_a_category_id' => 1,
+            'name' => 'Makanan Berat',
+        ]);
+
+        $this->assertDatabaseHas('intelligence_menus', [
+            'service_a_menu_id' => 10,
+            'name' => 'Ayam Geprek',
+            'service_a_category_id' => 1,
+        ]);
+
+        $this->assertDatabaseHas('intelligence_menu_aliases', [
+            'service_a_alias_id' => 501,
+            'alias' => 'geprek',
+            'normalized_alias' => 'geprek',
+        ]);
     }
 
     public function test_command_fetches_analyzes_and_updates_orders(): void
@@ -131,9 +192,33 @@ class ProcessOrdersCommandTest extends TestCase
         ]);
 
         Http::fake([
+            'http://service-a.test/api/categories' => Http::response([
+                'data' => [
+                    [
+                        'id' => 3,
+                        'name' => 'Minuman',
+                        'slug' => 'minuman',
+                        'description' => 'Kategori minuman',
+                        'is_active' => true,
+                        'menu_count' => 1,
+                        'created_at' => now()->subDay()->toIso8601String(),
+                    ],
+                ],
+            ], 200),
             'http://service-a.test/api/menus' => Http::response([
                 'data' => [
-                    ['name' => 'Es Teh', 'category' => ['name' => 'Minuman']],
+                    [
+                        'id' => 99,
+                        'name' => 'Es Teh',
+                        'slug' => 'es-teh',
+                        'price' => '5000.00',
+                        'is_active' => true,
+                        'category_id' => 3,
+                        'category' => ['id' => 3, 'name' => 'Minuman', 'slug' => 'minuman'],
+                        'aliases' => [
+                            ['id' => 700, 'alias' => 'esteh', 'normalized_alias' => 'esteh'],
+                        ],
+                    ],
                 ],
             ], 200),
             'http://service-a.test/api/queue/orders*' => Http::response([
@@ -187,6 +272,22 @@ class ProcessOrdersCommandTest extends TestCase
             'title' => 'Es Teh Sedang Naik (laki-laki)',
             'sent_to_service_a' => 1,
         ]);
+
+        $this->assertDatabaseHas('intelligence_categories', [
+            'service_a_category_id' => 3,
+            'name' => 'Minuman',
+        ]);
+
+        $this->assertDatabaseHas('intelligence_menus', [
+            'service_a_menu_id' => 99,
+            'name' => 'Es Teh',
+            'service_a_category_id' => 3,
+        ]);
+
+        $this->assertDatabaseHas('intelligence_menu_aliases', [
+            'service_a_alias_id' => 700,
+            'alias' => 'esteh',
+        ]);
     }
 
     public function test_dry_run_uses_fallback_data_when_service_a_unavailable(): void
@@ -200,6 +301,7 @@ class ProcessOrdersCommandTest extends TestCase
         Http::fake([
             'http://service-a.test/api/menus' => Http::response(['message' => 'timeout'], 504),
             'http://service-a.test/api/queue/orders*' => Http::response(['message' => 'timeout'], 504),
+            'http://service-a.test/api/categories' => Http::response(['message' => 'timeout'], 504),
         ]);
 
         $this->artisan('queue:process-orders --dry-run')
@@ -232,6 +334,19 @@ class ProcessOrdersCommandTest extends TestCase
         ]);
 
         Http::fake([
+            'http://service-a.test/api/categories' => Http::response([
+                'data' => [
+                    [
+                        'id' => 10,
+                        'name' => 'Makanan',
+                        'slug' => 'makanan',
+                        'description' => 'Kategori makanan',
+                        'is_active' => true,
+                        'menu_count' => 0,
+                        'created_at' => now()->subDay()->toIso8601String(),
+                    ],
+                ],
+            ], 200),
             'http://service-a.test/api/menus' => Http::response([
                 'data' => [],
             ], 200),

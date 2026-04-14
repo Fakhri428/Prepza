@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Exceptions\ServiceARequestException;
+use App\Models\IntelligenceCategory;
+use App\Models\IntelligenceMenu;
 use App\Models\IntelligenceOrder;
 use App\Models\IntelligenceTrend;
 use App\Services\OrderAnalyzer;
@@ -39,6 +41,7 @@ class ProcessOrders extends Command
             $useFallbackData = false;
 
             try {
+                $categories = $this->apiService->fetchCategories();
                 $menus = $this->apiService->fetchMenus();
                 $orders = $this->apiService->fetchQueueOrders();
             } catch (Throwable $throwable) {
@@ -48,6 +51,7 @@ class ProcessOrders extends Command
 
                 $this->warn('Service A tidak bisa diakses pada mode dry-run: '.$throwable->getMessage());
                 $orders = $this->loadOrdersFromLocalSnapshot();
+                $categories = [];
                 $menus = [];
                 $useFallbackData = true;
 
@@ -60,6 +64,7 @@ class ProcessOrders extends Command
             }
 
             if (! $useFallbackData) {
+                $this->syncCatalogToLocal($categories, $menus);
                 $this->syncOrdersToLocal($orders);
             }
 
@@ -387,6 +392,96 @@ class ProcessOrders extends Command
                     'note' => Arr::get($item, 'note'),
                     'qty' => max(1, (int) Arr::get($item, 'qty', 1)),
                     'subtotal' => Arr::get($item, 'subtotal'),
+                    'last_synced_at' => $syncedAt,
+                ]);
+            }
+        }
+    }
+
+    protected function syncCatalogToLocal(array $categories, array $menus): void
+    {
+        $syncedAt = Carbon::now();
+        $localCategoryMap = [];
+
+        foreach ($categories as $category) {
+            $serviceACategoryId = (int) Arr::get($category, 'id');
+            if ($serviceACategoryId <= 0) {
+                continue;
+            }
+
+            $localCategory = IntelligenceCategory::query()->updateOrCreate(
+                ['service_a_category_id' => $serviceACategoryId],
+                [
+                    'name' => (string) Arr::get($category, 'name', ''),
+                    'slug' => Arr::get($category, 'slug'),
+                    'description' => Arr::get($category, 'description'),
+                    'is_active' => (bool) Arr::get($category, 'is_active', true),
+                    'menu_count' => max(0, (int) Arr::get($category, 'menu_count', 0)),
+                    'service_a_created_at' => Arr::get($category, 'created_at'),
+                    'last_synced_at' => $syncedAt,
+                ]
+            );
+
+            $localCategoryMap[$serviceACategoryId] = (int) $localCategory->id;
+        }
+
+        foreach ($menus as $menu) {
+            $serviceAMenuId = (int) Arr::get($menu, 'id');
+            if ($serviceAMenuId <= 0) {
+                continue;
+            }
+
+            $serviceACategoryId = (int) (Arr::get($menu, 'category_id') ?: Arr::get($menu, 'category.id', 0));
+            $localCategoryId = $serviceACategoryId > 0 ? ($localCategoryMap[$serviceACategoryId] ?? null) : null;
+
+            if ($localCategoryId === null && $serviceACategoryId > 0) {
+                $categoryName = (string) Arr::get($menu, 'category.name', '');
+                $localCategory = IntelligenceCategory::query()->updateOrCreate(
+                    ['service_a_category_id' => $serviceACategoryId],
+                    [
+                        'name' => $categoryName !== '' ? $categoryName : 'Unknown',
+                        'slug' => Arr::get($menu, 'category.slug'),
+                        'description' => null,
+                        'is_active' => true,
+                        'menu_count' => 0,
+                        'service_a_created_at' => null,
+                        'last_synced_at' => $syncedAt,
+                    ]
+                );
+
+                $localCategoryId = (int) $localCategory->id;
+                $localCategoryMap[$serviceACategoryId] = $localCategoryId;
+            }
+
+            $localMenu = IntelligenceMenu::query()->updateOrCreate(
+                ['service_a_menu_id' => $serviceAMenuId],
+                [
+                    'intelligence_category_id' => $localCategoryId,
+                    'service_a_category_id' => $serviceACategoryId > 0 ? $serviceACategoryId : null,
+                    'name' => (string) Arr::get($menu, 'name', ''),
+                    'slug' => Arr::get($menu, 'slug'),
+                    'description' => Arr::get($menu, 'description'),
+                    'image_path' => Arr::get($menu, 'image_path'),
+                    'image_external_url' => Arr::get($menu, 'image_external_url'),
+                    'image_url' => Arr::get($menu, 'image_url'),
+                    'price' => Arr::get($menu, 'price'),
+                    'is_active' => (bool) Arr::get($menu, 'is_active', true),
+                    'last_synced_at' => $syncedAt,
+                ]
+            );
+
+            $localMenu->aliases()->delete();
+
+            foreach ((array) Arr::get($menu, 'aliases', []) as $alias) {
+                $aliasValue = trim((string) Arr::get($alias, 'alias', ''));
+                if ($aliasValue === '') {
+                    continue;
+                }
+
+                $localMenu->aliases()->create([
+                    'service_a_alias_id' => Arr::get($alias, 'id'),
+                    'alias' => $aliasValue,
+                    'normalized_alias' => Arr::get($alias, 'normalized_alias'),
                     'last_synced_at' => $syncedAt,
                 ]);
             }
