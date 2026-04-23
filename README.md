@@ -1,59 +1,201 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Prepza Service B (Intelligence Layer)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Service B adalah layer intelligence untuk sistem antrean pintar. Service ini mengambil data order dari Service A, menganalisis prioritas antrean secara fair, lalu mengirim feedback status dan trend kembali ke Service A.
 
-## About Laravel
+## Arsitektur Singkat
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- Service A: execution layer (order, queue, update status)
+- Service B (repo ini): intelligence layer (analisis prioritas, trend insight, sinkronisasi katalog)
+- Database lokal Service B menyimpan snapshot order, item, trend, category, menu, dan alias untuk analisis/dashboard.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Fitur Utama
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- Sinkronisasi dari Service A:
+	- categories
+	- menus (+ aliases)
+	- queue orders (termasuk cancelled)
+- Analisis antrean multi-factor:
+	- base complexity score (drink=1, fried=2, heavy=3)
+	- aging fairness boost
+	- batch optimization (menu sama di jendela waktu dekat)
+	- deadline pressure boost
+	- kitchen load awareness (normal/busy/overload)
+	- deterministic micro-jitter untuk mengurangi tie rigid
+- Feedback ke Service A:
+	- external_status + external_note
+	- trend updates
+- Dashboard intelligence:
+	- tabel analisis order
+	- action manual processing/done
+	- trend insight carousel per gender
+- Mock Service A endpoint (opsional) untuk pengujian lokal/E2E.
 
-## Learning Laravel
+## Struktur Komponen Penting
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+- Analisis antrean: [app/Services/OrderAnalyzer.php](app/Services/OrderAnalyzer.php)
+- Orkestrasi proses sinkron + feedback: [app/Console/Commands/ProcessOrders.php](app/Console/Commands/ProcessOrders.php)
+- Integrasi API Service A: [app/Services/ServiceAApiService.php](app/Services/ServiceAApiService.php)
+- Trend generation: [app/Services/TrendInsightService.php](app/Services/TrendInsightService.php)
+- Dashboard intelligence controller: [app/Http/Controllers/IntelligenceDashboardController.php](app/Http/Controllers/IntelligenceDashboardController.php)
+- Web routes: [routes/web.php](routes/web.php)
+- API mock routes: [routes/api-service-a-mock.php](routes/api-service-a-mock.php)
+- Kontrak API detail: [dokumentasiapi.md](dokumentasiapi.md)
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Setup Lokal
 
-## Laravel Sponsors
+1. Install dependency:
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```bash
+composer install
+npm install
+```
 
-### Premium Partners
+2. Siapkan environment:
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+```bash
+cp .env.example .env
+php artisan key:generate
+```
 
-## Contributing
+3. Siapkan database:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+php artisan migrate
+```
 
-## Code of Conduct
+4. Jalankan aplikasi:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+php artisan serve
+```
 
-## Security Vulnerabilities
+## Proses Utama Antrian
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Command utama:
 
-## License
+```bash
+php artisan queue:process-orders
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Dry-run:
+
+```bash
+php artisan queue:process-orders --dry-run
+```
+
+Perilaku dry-run:
+
+- Tidak mengirim patch/post ke Service A.
+- Jika Service A tidak tersedia, command memakai snapshot lokal atau demo data.
+
+## Scheduler Otomatis
+
+Cron expression di env:
+
+- `PROCESS_ORDERS_CRON` (default per menit)
+
+Aktifkan worker scheduler:
+
+```bash
+php artisan schedule:work
+```
+
+## Konfigurasi Service A (Core)
+
+Variabel penting di `.env`:
+
+- Koneksi/API:
+	- `SERVICE_A_BASE_URL`
+	- `SERVICE_A_TOKEN`
+	- `SERVICE_A_TIMEOUT`
+	- `SERVICE_A_FETCH_STATUSES`
+- Operasional queue:
+	- `SERVICE_A_ENFORCE_PRIORITY_SEQUENCE`
+	- `SERVICE_A_MAX_PROCESSING_SLOTS`
+	- `SERVICE_A_AUTO_DONE_ENABLED`
+	- `SERVICE_A_AUTO_DONE_MINUTES`
+- Threshold kitchen:
+	- `SERVICE_A_BUSY_THRESHOLD`
+	- `SERVICE_A_OVERLOAD_THRESHOLD`
+
+## Tuning Model Multi-Factor
+
+Parameter tuning tersedia di `.env` dan di-map melalui [config/services.php](config/services.php):
+
+- Batch & SLA:
+	- `SERVICE_A_BATCH_WINDOW_MINUTES`
+	- `SERVICE_A_TARGET_SLA_MINUTES`
+- Score shaping:
+	- `SERVICE_A_COMPLEXITY_PENALTY_MULTIPLIER`
+	- `SERVICE_A_BASE_SCORE_ANCHOR`
+	- `SERVICE_A_PRIORITY_HIGH_THRESHOLD`
+	- `SERVICE_A_PRIORITY_MEDIUM_THRESHOLD`
+- Aging:
+	- `SERVICE_A_AGING_BOOST_PER_5M`
+	- `SERVICE_A_AGING_BOOST_CAP`
+- Batch boost:
+	- `SERVICE_A_BATCH_BOOST_PER_MATCH`
+	- `SERVICE_A_BATCH_BOOST_CAP`
+- Deadline boost:
+	- `SERVICE_A_DEADLINE_BOOST_LATE`
+	- `SERVICE_A_DEADLINE_BOOST_NEAR`
+	- `SERVICE_A_DEADLINE_BOOST_NEAR_OVERLOAD`
+	- `SERVICE_A_DEADLINE_BOOST_WARNING`
+- Jitter:
+	- `SERVICE_A_JITTER_STEPS`
+	- `SERVICE_A_JITTER_SCALE`
+
+## Trend Insight
+
+- Trend dipisah per gender (perempuan/laki-laki).
+- Carousel per gender menampilkan maksimal 2 menu unik.
+- Jika item teratas merujuk menu yang sama (misal alias), sistem akan mencari item kedua yang berbeda.
+- Sumber gambar trend diprioritaskan dari menu database:
+	- `image_external_url` → `image_url` → `image_path` → placeholder.
+
+## Mock Service A (Opsional)
+
+Untuk aktifkan route mock, set:
+
+- `ENABLE_SERVICE_A_MOCK_ROUTES=true`
+
+Route mock berada di [routes/api-service-a-mock.php](routes/api-service-a-mock.php).
+
+## Dashboard
+
+- Home dashboard: [resources/views/dashboard.blade.php](resources/views/dashboard.blade.php)
+- Intelligence dashboard: [resources/views/intelligence/dashboard.blade.php](resources/views/intelligence/dashboard.blade.php)
+
+Data dashboard diambil dari tabel intelligence lokal, bukan dummy statis.
+
+## Testing
+
+Jalankan test utama:
+
+```bash
+php artisan test
+```
+
+Test yang paling relevan untuk domain ini:
+
+- [tests/Unit/OrderAnalyzerTest.php](tests/Unit/OrderAnalyzerTest.php)
+- [tests/Unit/TrendInsightServiceTest.php](tests/Unit/TrendInsightServiceTest.php)
+- [tests/Feature/ProcessOrdersCommandTest.php](tests/Feature/ProcessOrdersCommandTest.php)
+- [tests/Feature/IntelligenceDashboardIntegrationTest.php](tests/Feature/IntelligenceDashboardIntegrationTest.php)
+
+## Catatan Operasional
+
+- Setelah ubah `.env`, jalankan:
+
+```bash
+php artisan config:clear
+```
+
+- Jika integrasi gagal, cek:
+	- `storage/logs/laravel.log`
+	- nilai `SERVICE_A_BASE_URL`
+	- status endpoint Service A
+
+## Lisensi
+
+Project ini menggunakan basis Laravel dan mengikuti lisensi MIT.

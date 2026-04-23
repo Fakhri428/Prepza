@@ -40,13 +40,27 @@ class DashboardController extends Controller
 
         foreach ($activeOrders as $order) {
             $payload = [
+                'id' => $order->service_a_order_id,
+                'created_at' => optional($order->service_a_created_at)?->toIso8601String(),
                 'items' => $order->items->map(fn ($item) => [
                     'item_name' => $item->item_name,
                     'qty' => (int) $item->qty,
                 ])->all(),
             ];
 
-            $analysis = $analyzer->analyzeOrder($payload, $menuTypeMap, $waitingCount);
+            $analysis = $analyzer->analyzeOrderWithContext($payload, $menuTypeMap, $waitingCount, [
+                'orders' => $activeOrders->map(function (IntelligenceOrder $candidate): array {
+                    return [
+                        'id' => $candidate->service_a_order_id,
+                        'created_at' => optional($candidate->service_a_created_at)?->toIso8601String(),
+                        'items' => $candidate->items->map(fn ($item) => [
+                            'item_name' => $item->item_name,
+                            'qty' => (int) $item->qty,
+                        ])->all(),
+                    ];
+                })->values()->all(),
+                'batch_window_minutes' => (int) config('services.service_a.batch_window_minutes', 5),
+            ]);
             $priority = (string) Arr::get($analysis, 'priority', 'low');
             $priorityCounts[$priority] = ($priorityCounts[$priority] ?? 0) + 1;
         }

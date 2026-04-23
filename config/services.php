@@ -58,6 +58,27 @@ return [
 
         'busy_threshold' => (int) env('SERVICE_A_BUSY_THRESHOLD', 5),
         'overload_threshold' => (int) env('SERVICE_A_OVERLOAD_THRESHOLD', 10),
+        'batch_window_minutes' => (int) env('SERVICE_A_BATCH_WINDOW_MINUTES', 5),
+        'target_sla_minutes' => (int) env('SERVICE_A_TARGET_SLA_MINUTES', 25),
+
+        'complexity_penalty_multiplier' => (float) env('SERVICE_A_COMPLEXITY_PENALTY_MULTIPLIER', 2.6),
+        'base_score_anchor' => (float) env('SERVICE_A_BASE_SCORE_ANCHOR', 12),
+        'priority_high_threshold' => (float) env('SERVICE_A_PRIORITY_HIGH_THRESHOLD', 9),
+        'priority_medium_threshold' => (float) env('SERVICE_A_PRIORITY_MEDIUM_THRESHOLD', 7),
+
+        'aging_boost_per_5m' => (float) env('SERVICE_A_AGING_BOOST_PER_5M', 0.35),
+        'aging_boost_cap' => (float) env('SERVICE_A_AGING_BOOST_CAP', 4),
+
+        'batch_boost_per_match' => (float) env('SERVICE_A_BATCH_BOOST_PER_MATCH', 0.45),
+        'batch_boost_cap' => (float) env('SERVICE_A_BATCH_BOOST_CAP', 1.8),
+
+        'deadline_boost_late' => (float) env('SERVICE_A_DEADLINE_BOOST_LATE', 3),
+        'deadline_boost_near' => (float) env('SERVICE_A_DEADLINE_BOOST_NEAR', 2),
+        'deadline_boost_near_overload' => (float) env('SERVICE_A_DEADLINE_BOOST_NEAR_OVERLOAD', 2.4),
+        'deadline_boost_warning' => (float) env('SERVICE_A_DEADLINE_BOOST_WARNING', 1.2),
+
+        'jitter_steps' => (int) env('SERVICE_A_JITTER_STEPS', 11),
+        'jitter_scale' => (float) env('SERVICE_A_JITTER_SCALE', 0.01),
 
         'trend_min_repeat' => (int) env('SERVICE_A_TREND_MIN_REPEAT', 4),
         'trend_min_repeat_gender' => (int) env('SERVICE_A_TREND_MIN_REPEAT_GENDER', 2),

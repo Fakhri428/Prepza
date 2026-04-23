@@ -79,7 +79,10 @@ class ProcessOrders extends Command
                     continue;
                 }
 
-                $analysis = $this->analyzer->analyzeOrder($order, $menuTypeMap, $waitingCount);
+                $analysis = $this->analyzer->analyzeOrderWithContext($order, $menuTypeMap, $waitingCount, [
+                    'orders' => $orders,
+                    'batch_window_minutes' => (int) config('services.service_a.batch_window_minutes', 5),
+                ]);
                 $payload = $this->buildExternalUpdatePayload($order, $analysis);
 
                 $preparedUpdates[] = [

@@ -66,7 +66,10 @@ class IntelligenceDashboardController extends Controller
             $kitchenStatus = 'normal';
 
             foreach ($orders as $order) {
-                $analysis = $analyzer->analyzeOrder($order, $menuTypeMap, $waitingCount);
+                $analysis = $analyzer->analyzeOrderWithContext($order, $menuTypeMap, $waitingCount, [
+                    'orders' => $orders,
+                    'batch_window_minutes' => (int) config('services.service_a.batch_window_minutes', 5),
+                ]);
                 $priorityCounts[$analysis['priority']]++;
                 $kitchenStatus = $analysis['kitchen_status'];
 
